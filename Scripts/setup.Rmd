@@ -1,0 +1,366 @@
+---
+title: "Project Setup"
+author: "Kristi Lin-Rahardja"
+date: "7/28/2021"
+output:
+  rmdformats::downcute:
+    self_contained: true
+    number_sections: true
+    code_folding: show
+    df_print: paged
+  pdf_document:
+    toc: yes
+---
+
+In this script, we will set up all the necessary directories and download the data from GDSC2. After this has been run once, it doesn't need to be run again.
+
+# Setup
+
+## Libraries
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r lib, message=FALSE}
+library(here)
+library(gdscIC50) #for cleaning and normalizing the raw drug response data
+library(tidyverse)
+
+conflicted::conflict_prefer("select", "dplyr")
+conflicted::conflict_prefer("filter", "dplyr")
+```
+
+## Create Directories
+
+```{r mk_directories}
+#Scripts
+dir.create(here("Scripts"))
+
+#Directory where input data will be stored
+dir.create(here("Data"), showWarnings = FALSE)
+dir.create(here("Data", "Raw Data"), showWarnings = FALSE)
+dir.create(here("Data", "Signatures"), showWarnings = FALSE)
+
+#Directories to store results
+dir.create(here("Results"), showWarnings = FALSE)
+dir.create(here("Results", "Data Prep"), showWarnings = FALSE)
+
+#Directories to store plots
+dir.create(here("Plots"), showWarnings = FALSE)
+dir.create(here("Plots", "Data Prep"), showWarnings = FALSE)
+dir.create(here("Plots", "DRC"), showWarnings = FALSE)
+dir.create(here("Plots", "Epithelial Cancers"), showWarnings = FALSE)
+```
+
+
+# Download Data
+
+To download the data from GDSC2, we will use Jessica Scarborough's code from her CisSig download_data script. The bulk of the next 3 chunks are written by her.  
+The links listed in the executable chunks can be found my going to these links and right clicking/copying the specified text:  
+
+[Expression Data](https://www.cancerrxgene.org/gdsc1000/GDSC1000_WebResources//Pathway_Activity_Scores.html)  
+Copy link for "RMA normalized..."    
+
+[Cell line Meta Data](https://www.cancerrxgene.org/downloads/bulk_download)  
+Copy link for ""Cell line annotations"    
+
+[Fitted Drug Response](https://www.cancerrxgene.org/downloads/bulk_download)  
+Copy link for "GDSC2-dataset" 
+
+[Raw Drug Response](https://www.cancerrxgene.org/downloads/bulk_download)  
+Copy link for "GDSC2-raw-data"    
+
+**If the data has been updated, the links in the following chunks need to be replaced!**
+This will be obvious if an error is thrown saying the "Given file does not exist".
+
+## Expression
+
+In order to download the expression data, we'll create a function, `get_exp`. This function downloads the data directly from a GDSC URL, creates a zipped file in the `Data/GDSC` sub-directory of our project directory, and unzips the file. We'll read the unzipped file and store these data as a tibble in a local variable, `gdsc_expr`. These data are very large, so we need to increase the timeout limit for this download. Additionally, this function will check for the presence of the raw data file, `Cell_line_RMA_proc_basalExp.txt`, before downloading the data. If the file exists, the function will simply return the data from this file as a tibble. 
+
+```{r load_exp, message = FALSE}
+options(timeout = 600) # set the global option to stop the code if the run time exceeds 600s; increased from default of 60 s
+
+#Create a function to download the GDSC2 expression data as a zip file from the website, then unzip it here.
+get_exp <- function(cache) {
+  # check if file has already been downloaded at the provided cache -- if not, proceed with the download.
+  if(!file.exists(here(cache, "/Cell_line_RMA_proc_basalExp.txt"))) {
+    #Download the zipped file to the specified directory
+    download.file(
+      "https://www.cancerrxgene.org/gdsc1000/GDSC1000_WebResources//Data/preprocessed/Cell_line_RMA_proc_basalExp.txt.zip",
+      destfile = here(cache, "gdsc_expr_rma.zip"))
+    #Unzip the file
+    unzip(zipfile = here(cache, "gdsc_expr_rma.zip"), exdir = cache)
+    #Remove the zombie zip file
+    file.remove(here(cache, "gdsc_expr_rma.zip"))
+  
+    } else { #If the file already exists, state that we will be using the existing file.
+    message("Using cached GDSC2 expression data.")
+  }
+  #Load the unzipped data file
+  exp_df <- readr::read_tsv(paste0(cache, "/Cell_line_RMA_proc_basalExp.txt"))
+  return(exp_df)
+  
+}
+
+#Run the above function
+raw_exprs <- get_exp(here("Data", "Raw Data"))
+
+```
+
+As originally loaded, the expression data set (`gdsc_expr`) has `r nrow(gdsc_expr)` rows and `r ncol(gdsc_expr)` columns. 
+
+
+## Cell Line Metadata
+
+We'll create the `get_meta` function to use `curl_download` from the `curl` package to download the cell line characterization (meta) data using file transfer protocol (FTP), storing the unaltered excel file in the `Data/GDSC` sub-directory of our project directory. We'll read this file using `read_excel` from the `readxl` package and store the data as a local variable, `cell_lines`. 
+
+```{r load_cl}
+#Create a function to download the cell line meta data/details from the website.
+get_meta <- function(cache) {
+   # check if file has already been downloaded at the provided cache -- if not, proceed with the download.
+  if(!file.exists(paste0(cache, "/Cell_Lines_Details.xlsx"))) {
+    curl::curl_download("ftp://ftp.sanger.ac.uk/pub/project/cancerrxgene/releases/current_release/Cell_Lines_Details.xlsx",
+                        destfile = paste0(cache, "/Cell_Lines_Details.xlsx"))
+  } else { #If the file already exists, state that we will be using the existing file.
+    message("Using cached metadata.")
+  }
+  #Load the data file
+  meta_df <- readxl::read_excel(paste0(cache, "/Cell_Lines_Details.xlsx"))
+  return(meta_df)
+}
+
+#Run the above function
+cell_lines <- get_meta(here("Data", "Raw Data"))
+```
+
+As originally loaded, the cell line meta data set (`data_raw_meta`) has `r nrow(data_raw_meta)` rows and `r ncol(data_raw_meta)` columns. 
+
+
+
+
+
+## Fitted Drug Response
+
+For the drug response data, we'll create the `get_dr` function, using `curl_download` from the `curl` package to download the drug response data using file transfer protocol (FTP), storing the unaltered excel file in the `Data/GDSC` sub-directory of our project directory. We'll read this file using `read_excel` from the `readxl` package and store the data as a local variable, `gdsc_dr`. 
+
+```{r load_fit_dr}
+#Create a function to download the GDSC2 drug response datafrom the website.
+get_dr <- function(cache) {
+   # check if file has already been downloaded at the provided cache -- if not, proceed with the download.
+  if(!file.exists(paste0(cache, "/GDSC2_fitted_dose_response.xlsx"))) {
+    # Download file, store in specified directory
+    curl::curl_download(
+      "https://cog.sanger.ac.uk/cancerrxgene/GDSC_release8.5/GDSC2_fitted_dose_response_27Oct23.xlsx",
+      destfile = paste0(cache, "/GDSC2_fitted_dose_response.xlsx"))
+    
+  } else { #If the file already exists, state that we will be using the existing file.
+    message("Using cached GDSC2 drug response data.")
+  }
+  
+  #Load the data file
+  dr_df <- readxl::read_excel(paste0(cache, "/GDSC2_fitted_dose_response.xlsx"))
+  return(dr_df)
+  
+}
+
+#Run the above function
+fitted_dr <- get_dr(here("Data", "Raw Data"))
+```
+
+As originally loaded, the drug response data set (`gdsc_dr`) has `r nrow(gdsc_dr)` rows and `r ncol(gdsc_dr)` columns.
+
+
+## Raw Drug Response
+
+For the raw drug response data, we'll create the `get_raw_dr` function, using `curl_download` from the `curl` package to download the drug response data using file transfer protocol (FTP), storing the unaltered excel file in the `Data/GDSC` sub-directory of our project directory. We'll read this file using `read_csv` and store the data as a local variable, `raw_dose_resp`. 
+
+```{r load_dr}
+#Create a function to download the GDSC2 drug response datafrom the website.
+get_raw_dr <- function(cache) {
+   # check if file has already been downloaded at the provided cache -- if not, proceed with the download.
+  if(!file.exists(paste0(cache, "/gdsc2_raw_drug_response.csv"))) {
+    # Download file, store in specified directory
+    curl::curl_download(
+      "https://cog.sanger.ac.uk/cancerrxgene/GDSC_release8.5/GDSC2_public_raw_data_27Oct23.csv.zip",
+      destfile = paste0(cache, "/gdsc2_raw_drug_response.csv"))
+    
+  } else { #If the file already exists, state that we will be using the existing file.
+    message("Using cached GDSC2 raw drug response data.")
+  }
+  
+  #Load the data file
+  dr_df <- read_csv(paste0(cache, "/gdsc2_raw_drug_response.csv"))
+  return(dr_df)
+  
+}
+
+#Run the above function
+raw_dose_resp <- get_raw_dr(here("Data", "Raw Data"))
+
+```
+
+
+
+# Clean Data
+
+## Load Data (if not already loaded)
+
+```{r}
+cell_lines = readxl::read_xlsx(here("Data", "Raw Data", "Cell_Lines_Details.xlsx"))
+raw_exprs = readr::read_tsv(here("Data", "Raw Data", "Cell_line_RMA_proc_basalExp.txt"))
+fitted_dr = readxl::read_excel(here("Data", "Raw Data", "GDSC2_fitted_dose_response.xlsx"))
+raw_dose_resp = read_csv(here("Data", "Raw Data", "gdsc2_raw_drug_response.csv"))
+```
+
+
+## Cell Line Metadata
+
+```{r clean_cl}
+#Make this column name easier to reference
+colnames(cell_lines)[c(9,10)] = c("Tissue_Descriptor", "Subtype_Label")
+
+#Rename COAD/READ and unclassified so the labels match between dfs
+cell_lines$Subtype_Label = cell_lines$Subtype_Label %>% replace_na('UNCLASSIFIED') #for cell lines w/o classifications, we'll label as unclassified
+cell_lines[cell_lines == "UNABLE TO CLASSIFY"] = 'UNCLASSIFIED'
+cell_lines[cell_lines == "COAD/READ"] = 'COREAD'
+
+#many rows have tissue_desc and a subtype label exists, but is NA in that column--how to replace the NAs? cl_key?
+label_key = cell_lines %>% select(Tissue_Descriptor, Subtype_Label)
+label_key = label_key[!duplicated(label_key),]
+
+#List out all the tissues that have duplicate rows, one NA and one properly labeled
+tissue_list = unique(label_key$Tissue_Descriptor)
+for (i in 1:length(tissue_list)){
+  if(length(which(label_key$Tissue_Descriptor == tissue_list[i])) > 1){
+    print(tissue_list[i])
+  }
+}
+
+cell_lines$test = cell_lines$Subtype_Label
+cell_lines$test = str_replace(cell_lines$Tissue_Descriptor, "head and neck", "HNSC")
+cell_lines$test = str_replace(cell_lines$Tissue_Descriptor, "haematopoietic_neoplasm other", "MM")
+cell_lines$test = str_replace(cell_lines$Tissue_Descriptor, "lymphoblastic_leukemia", "ALL")
+cell_lines$test = str_replace(cell_lines$Tissue_Descriptor, "T_cell_leukemia", "ALL")
+cell_lines$test = str_replace(cell_lines$Tissue_Descriptor, "breast", "BRCA")
+cell_lines$test = str_replace(cell_lines$Tissue_Descriptor, "stomach", "STAD")
+cell_lines$test = str_replace(cell_lines$Tissue_Descriptor, "kidney", "KIRC")
+cell_lines$test = str_replace(cell_lines$Tissue_Descriptor, "lung_NSCLC_adenocarcinoma", "LUAD")
+cell_lines$test = str_replace(cell_lines$Tissue_Descriptor, "pancreas", "PAAD")
+cell_lines$test = str_replace(cell_lines$Tissue_Descriptor, "cervix", "CESC")
+cell_lines$test = str_replace(cell_lines$Tissue_Descriptor, "endometrium", "UCEC")
+cell_lines$test = str_replace(cell_lines$Tissue_Descriptor, "ovary", "OV")
+cell_lines$test = str_replace(cell_lines$Tissue_Descriptor, "prostate", "PRAD")
+```
+
+```{r save_cl}
+#Save the cleaned, full metadata
+saveRDS(cell_lines, here("Data", "cleaned_cell_line_meta.rds"))
+```
+
+
+
+```{r subtype_key}
+#create a key to match cell lines to their subtypes
+subtype_key = cell_lines %>% select(`COSMIC identifier`, Subtype_Label)
+subtypes = unique(subtype_key$Subtype_Label)
+colnames(subtype_key) = c("cell_line", "subtype")
+class(subtype_key$cell_line) = "character"
+```
+
+```{r save_subtype_key}
+saveRDS(subtype_key, here("Data", "subtype_key.rds"))
+```
+
+
+## Expression
+
+Tidy up the data a bit by cleaning the column names and removing duplicate genes.
+
+```{r clean_exp}
+#Change the column names from DATA.COSMIC ID to just COSMIC IDs (COSMIC = cell lines)
+cols = colnames(raw_exprs) #store the column names as a vector
+cols = as.data.frame(cols[-c(1:2)]) #Change cols vector to a data frame and remove the first two descriptor columns
+colnames(cols) = "x" #the name of the column in cols is weird to reference, just change it to "x" for ease of reference
+cols = cols %>%
+  separate(x, c("rm", "COSMIC_ID"), "DATA.") #split the values-- create 2 new columns: one with "DATA." and the other with the cosmic ID
+cols = as.vector(cols$COSMIC_ID) #make the cols variable a vector of just the cosmic IDs
+colnames(raw_exprs)[3:ncol(raw_exprs)] = cols #Set the column names of raw_exprs (minus the 2 descriptor columns) to be just the IDs
+rm(cols) #Remove this variable now that we're done with it for cleanliness
+
+#check that there arent duplicated genes- output should be NA and nothing else. If there is more, use the commented line below
+#many of the duplicated genes are just "NA"s; rename them so R doesnt get confused
+raw_exprs$GENE_SYMBOLS = raw_exprs$GENE_SYMBOLS %>% replace_na('UNCLASSIFIED')
+dup_genes_gdsc = raw_exprs$GENE_SYMBOLS[c(which(duplicated(raw_exprs$GENE_SYMBOLS)==TRUE))]
+```
+
+Normalize the expression.
+
+```{r norm_exp}
+#Normalize expression using scale(), by genes (columns)
+exprs_norm = raw_exprs #Copy the original data
+exprs_norm[,3:ncol(exprs_norm)] = scale(exprs_norm[,3:ncol(exprs_norm)],
+                                        center=TRUE,
+                                        scale=TRUE) #center = subtract by the mean; scale = divide by stdev
+
+
+#Clean + reformat a bit
+exprs_norm = exprs_norm %>%
+  dplyr::select(-GENE_title) %>% #remove the extra descriptor column
+  filter(!(GENE_SYMBOLS %in% dup_genes_gdsc)) %>% # remove duplicated genes
+  mutate(GENE_SYMBOLS = str_replace_all(GENE_SYMBOLS, "-", "_")) %>% #replace any - with _
+  gather(COSMIC_ID, value, -GENE_SYMBOLS) %>% #convert to long format (excluding the gene symbols col)
+  spread(GENE_SYMBOLS, value) #convert back to wide format, with genes as colnames
+```
+
+Save the cleaned and normalized expression data.
+
+```{r save_exp}
+#Save
+saveRDS(exprs_norm, here("Data", "normalized_exprs.rds"))
+```
+
+
+## Fitted Drug Response
+
+Make a key to decipher the drug IDs using the fitted drug response dataset.
+
+```{r drug_id_key}
+drug_id_key = fitted_dr %>% select(DRUG_ID, DRUG_NAME)
+
+saveRDS(drug_id_key, here("Data", "drug_id_key.rds"))
+```
+
+
+
+## Raw Drug Response
+
+The following 2 chunks are based on the `gdscIC50` vignette linked [here](https://rdrr.io/github/yemelianovskyi/gdscIC50_advanced/f/vignettes/gdscIC50.Rmd).
+
+```{r clean_dr}
+#Remove any drug treatments that were failed. Then, remove any sets with no indicated drug.
+cleaned_dose_resp = removeFailedDrugs(raw_dose_resp) %>% 
+  removeMissingDrugs()
+```
+
+```{r norm_dr}
+#Convert raw fluorescence intensities to cell viability/survival (between 0 and 1); normalize per plate
+norm_dose_resp = normalizeData(cleaned_dose_resp,
+                              trim = T, #ensure no values are != 1 or != 0
+                              neg_control = "NC-1",
+                              pos_control = "B")
+```
+
+```{r save_dr}
+saveRDS(norm_dose_resp, here("Data", "prepped_drug_resp.rds"))
+```
+
+
+# Session Info
+
+```{r}
+sessionInfo()
+```
+
+
+

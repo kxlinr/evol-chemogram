@@ -1,0 +1,7 @@
+"0","saveRDS(fit_results,
+        here(""Results"",
+             paste0(length(sigs), ""sig_nlme_fitted_data.rds"")))
+"
+"2","Error in saveRDS(fit_results, here(""Results"", paste0(length(sigs), ""sig_nlme_fitted_data.rds""))) : 
+  object 'fit_results' not found
+"

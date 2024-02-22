@@ -1,0 +1,28 @@
+{
+    "id": "4F9B7DAC",
+    "path": "~/PhD/Projects/evol-chemogram/Scripts/chemogram_pipeline.Rmd",
+    "project_path": "Scripts/chemogram_pipeline.Rmd",
+    "type": "r_markdown",
+    "hash": "3885129593",
+    "contents": "",
+    "dirty": false,
+    "created": 1708623956829.0,
+    "source_on_save": false,
+    "relative_order": 3,
+    "properties": {
+        "tempName": "Untitled1",
+        "source_window_id": "",
+        "Source": "Source",
+        "cursorPosition": "479,104",
+        "scrollLine": "462",
+        "last_setup_crc32": "7612d4e4bb338d19"
+    },
+    "folds": "85|30|102|0|\n241|16|271|0|\n272|23|386|0|\n",
+    "lastKnownWriteTime": 1708627698,
+    "encoding": "UTF-8",
+    "collab_server": "",
+    "source_window": "",
+    "last_content_update": 1708627698851,
+    "read_only": false,
+    "read_only_alternatives": []
+}

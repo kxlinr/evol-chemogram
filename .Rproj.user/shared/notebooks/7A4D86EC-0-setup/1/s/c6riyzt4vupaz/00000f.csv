@@ -1,0 +1,6 @@
+"0","#Run the above function
+fitted_dr <- get_dr(here(""Data"", ""Raw Data""))
+"
+"2","Error in curl::curl_download(""ftp://ftp.sanger.ac.uk/pub/project/cancerrxgene/releases/current_release/GDSC2_public_raw_data_25Feb20.csv"",  : 
+  Given file does not exist
+"

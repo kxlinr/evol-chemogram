@@ -1,0 +1,1 @@
+{"frames":[{"func":"saveRDS(fit_results, here(\"Results\", paste0(length(sigs), \"sig_nlme_fitted_data.rds\")))","file":"","line_number":0,"end_line_number":0,"character_number":0,"end_character_number":0}],"message":"Error in saveRDS(fit_results, here(\"Results\", paste0(length(sigs), \"sig_nlme_fitted_data.rds\"))) : \n  object 'fit_results' not found\n"}

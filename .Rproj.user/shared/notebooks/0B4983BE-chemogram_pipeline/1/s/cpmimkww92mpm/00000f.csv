@@ -1,0 +1,13 @@
+"0","nlme_data <- prepNlmeData(prep_dose_resp, ""COSMIC_ID"")
+"
+"2","Warning: `arrange_()` was deprecated in dplyr 0.7.0.
+Please use `arrange()` instead.
+See vignette('programming') for more help"
+"2","Warning: `unite_()` was deprecated in tidyr 1.2.0.
+Please use `unite()` instead."
+"2","Warning: `count_()` was deprecated in dplyr 0.7.0.
+Please use `count()` instead.
+See vignette('programming') for more help"
+"2","Warning: `distinct_()` was deprecated in dplyr 0.7.0.
+Please use `distinct()` instead.
+See vignette('programming') for more help"
