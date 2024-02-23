@@ -484,6 +484,7 @@ Remove missing data, results for cell lines of unclassified subtypes, and format
 #all the values with NA had missing drug response data and should be excluded
 nrow(scored_ranks)
 scored_ranks_full = na.omit(scored_ranks) #986 to 759 for 3 sigs, 616 after rm unclassified cell lines
+                                          #968 to 670 for 10sig, 539 after rm unclass.
 nrow(scored_ranks_full)
 
 #create a new df with one row per subtype, and columns = subtype, proportion_correct

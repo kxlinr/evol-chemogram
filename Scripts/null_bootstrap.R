@@ -10,7 +10,11 @@ conflicted::conflict_prefer("filter", "dplyr")
 conflicted::conflict_prefer("mutate", "dplyr")
 conflicted::conflict_prefer("select", "dplyr")
 
+#if running in the cluster, uncomment this
+# n_sigs = args[1]
 
+#if running locally, use this
+n_sigs = 3
 
 # Load Sigs
 sig_files = list.files(here("Data", "Signatures"))
@@ -21,9 +25,16 @@ sig_drugs = c("Cisplatin", "Cytarabine", "5-Fluorouracil", "Gemcitabine", "Irino
               "Luminespib", "Paclitaxel", "Topotecan", "Vinblastine", "Vorinostat")
 rm(sig_files)
 
-#just the 3
-sigs = sigs[c(1,3,4)]
-sig_drugs=sig_drugs[c(1,3,4)]
+if(n_sigs == 3){
+  #just the 3
+  sigs = sigs[c(1,3,4)]
+  sig_drugs=sig_drugs[c(1,3,4)]
+  print(sig_drugs)
+} else {
+  print(sig_drugs)
+}
+
+
 
 
 # Load and Prep Score Table
