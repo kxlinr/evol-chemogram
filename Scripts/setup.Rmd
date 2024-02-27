@@ -44,12 +44,10 @@ dir.create(here("Data", "Signatures"), showWarnings = FALSE)
 
 #Directories to store results
 dir.create(here("Results"), showWarnings = FALSE)
-dir.create(here("Results", "Data Prep"), showWarnings = FALSE)
 
 #Directories to store plots
 dir.create(here("Plots"), showWarnings = FALSE)
 dir.create(here("Plots", "Data Prep"), showWarnings = FALSE)
-dir.create(here("Plots", "DRC"), showWarnings = FALSE)
 dir.create(here("Plots", "Epithelial Cancers"), showWarnings = FALSE)
 ```
 
