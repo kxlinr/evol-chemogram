@@ -795,3 +795,55 @@ ggsave(here("Plots", "Epithelial Cancers",
             paste0(length(sigs), "sig_prediction_surv_epi.png")),
        width=15, height=8)
 ```
+
+
+scatterplot of score vs surv
+
+```{r}
+ggplot(surv_sup, aes(x=score, y=surv)) +
+  geom_point(alpha=0.4, col = "#48705d") +
+  labs(title="Predicted Sensitivity vs. Observed Survival",
+       x="Signature Score", 
+       y="Survival")+
+
+  facet_wrap(~drug_abbrev, 
+             labeller=as_labeller(setNames(sig_drugs, names(sig_labels))),
+             nrow=plot_rows) +
+  
+  theme_bw(base_size = 15) + #theme and sizing
+  theme(axis.text.y = element_text(size = 20),
+        axis.text.x = element_text(size = 20),
+        legend.position = "none",
+        plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(hjust = 0.5),
+        axis.text = element_text(size = 10))
+
+ggsave(here("Plots",
+            paste0(length(sigs), "sig_score_v_surv.png")),
+       width=15, height=7)
+```
+
+```{r}
+ggplot(surv_sup %>% filter(subtype %in% epi), aes(x=score, y=surv)) +
+  geom_point(alpha=0.4, col = "#48705d") +
+  labs(title="Predicted Sensitivity vs. Observed Survival",
+       subtitle = "in Epithelial Cancers",
+       x="Signature Score", 
+       y="Survival")+
+
+  facet_wrap(~drug_abbrev, 
+             labeller=as_labeller(setNames(sig_drugs, names(sig_labels))),
+             nrow=plot_rows) +
+  
+  theme_bw(base_size = 15) + #theme and sizing
+  theme(axis.text.y = element_text(size = 20),
+        axis.text.x = element_text(size = 20),
+        legend.position = "none",
+        plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(hjust = 0.5),
+        axis.text = element_text(size = 10))
+
+ggsave(here("Plots", "Epithelial Cancers",
+            paste0(length(sigs), "sig_score_v_surv_epi.png")),
+       width=15, height=7)
+```
