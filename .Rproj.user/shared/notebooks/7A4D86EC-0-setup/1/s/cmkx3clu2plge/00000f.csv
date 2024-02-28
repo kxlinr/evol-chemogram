@@ -1,3 +1,0 @@
-"0","library(gdscIC50) #for cleaning and normalizing the raw drug response data
-"
-"2","Warning: replacing previous import ‘dplyr::collapse’ by ‘nlme::collapse’ when loading ‘gdscIC50’"

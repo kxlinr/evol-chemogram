@@ -93,6 +93,7 @@ rm(norm_dose_resp, prep_dose_resp, raw_dose_resp) #cleanup
 ```
 
 Include only the drugs we will use in the chemogram.
+
 ```{r filter_dr}
 drug_ids = unique(drug_id_key %>% filter(DRUG_NAME %in% sig_drugs))
 
@@ -119,6 +120,7 @@ fit_nlme = function(data, drug, drug_abbrev){
   stats = left_join(stats, subtype_key, by="cell_line") #add subtype labels per cl
   
   #find median ic50s
+  subtypes = unique(subtype_key$subtype)
   subtype_doses = data.frame(matrix(ncol=5, nrow=length(subtypes)))
   for(i in 1:length(subtypes)){
     temp = (stats %>% #isolate all CLs and IC50s for one subtype
@@ -390,6 +392,7 @@ rm(plot_score_ht)
 ## Generate Permutation Matrix
 
 To quantify the accuracy of the chemogram/signature-based predictions, we calculate a unique accuracy score for each possible permutation of the drug sensitivity ranking.
+The score table for 10 signatures was generated on the cluster.
 
 ```{r score_table}
 n = length(sigs)
@@ -399,8 +402,6 @@ acc_scores=as.data.frame(score_table)
 
 
 ```{r save_perms}
-# acc_scores = as.data.frame(readRDS(here("perm10.rds"))) #ran the above code on the cluster
-
 #Add a column for the associated accuracy scores
 m = nrow(acc_scores)
 acc_scores = acc_scores %>%
@@ -483,6 +484,7 @@ Remove missing data, results for cell lines of unclassified subtypes, and format
 #all the values with NA had missing drug response data and should be excluded
 nrow(scored_ranks)
 scored_ranks_full = na.omit(scored_ranks) #986 to 759 for 3 sigs, 616 after rm unclassified cell lines
+                                          #968 to 670 for 10sig, 539 after rm unclass.
 nrow(scored_ranks_full)
 
 #create a new df with one row per subtype, and columns = subtype, proportion_correct
