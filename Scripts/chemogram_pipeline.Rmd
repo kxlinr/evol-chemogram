@@ -18,7 +18,7 @@ knitr::opts_chunk$set(echo = TRUE)
 
 This pipeline should be run after `setup.Rmd` and can be used in place of the remaining scripts. The chemogram can use any number of signatures to rank drug response against the GDSC cell lines.
 
-The signatures used here were extracted using the [CisSig pipeline](https://github.com/jessicascarborough/cissig) [published by Scarborough et al](https://www.nature.com/articles/s41698-023-00375-y.pdf). The parameters used for each signature were the same as CisSig, with the exception of the irinotecan, topotecan, and vorinostat signatures, which used a differential expression cutoff of 0.15 instead of 0.2.
+The signatures used here were extracted using the [CisSig](https://github.com/jessicascarborough/cissig) pipeline published by [Scarborough et al](https://www.nature.com/articles/s41698-023-00375-y.pdf). The parameters used for each signature were the same as CisSig, with the exception of the irinotecan, topotecan, and vorinostat signatures, which used a differential expression cutoff of 0.15 instead of 0.2.
 
 
 The only manual parts should be listing the full drug names at the end of the `signatures` chunk below.
@@ -474,6 +474,8 @@ scored_ranks = readRDS(here("Results", paste0(length(sigs),"sig_accuracy_scores.
 
 
 
+
+
 # Plot Results
 
 ## Clean Data
@@ -615,4 +617,181 @@ ggsave(plot=p2,
                      paste0(length(sigs), "sig_accuracy_boxplots_epi.png")), 
        width = 15, height = 9) #save plot
 
+```
+
+
+
+## Supplemental Plots
+
+Frequency of each ranking per drug
+
+```{r}
+#create a new df to store the rankings in
+scores_sup = data.frame(matrix(nrow=0, ncol=(ncol(scores_long)+1)))
+colnames(scores_sup) = c(colnames(scores_long), "rank")
+#create a vector of all the cell lines to go through
+cl_list = unique(scores_long$cell_line)
+
+for(i in 1:length(cl_list)){
+  #for each cell line, sort by descending sig score (most to least sensitive)
+  temp = scores_long %>% filter(cell_line == cl_list[i])
+  temp = temp[order(temp$score, decreasing = TRUE),]
+  temp$rank = seq(1:nrow(temp)) #label the ranking from most to least sensitive
+  
+  scores_sup = rbind(scores_sup, temp) #combine results with the previous iteration
+}
+rm(temp)
+
+scores_sup = scores_sup %>%
+  filter(subtype != "UNCLASSIFIED") %>%
+  mutate(rank = factor(rank, ordered=TRUE,
+                       levels = seq(1:length(sigs))))
+```
+
+```{r}
+#set some plotting parameters based on number of sigs used
+if(length(sigs) <= 5){
+  plot_rows = 1
+  bar_n_displace = -10
+  bar_n_angle = 0
+  bar_n_size = 5
+  viol_n_displace = -0.03
+} else {
+  plot_rows = 2
+  bar_n_displace = -20
+  bar_n_angle = 45
+  bar_n_size = 4
+  viol_n_displace = -0.05
+}
+
+#make a funciton and list to label each facet with the full name per drug
+sig_labels = list()
+for(i in 1:length(sigs)){
+  sig_labels[[i]] = sig_drugs[i]
+  names(sig_labels)[i] = names(sigs)[i]
+}
+#make a function to label number of cell lines represented in each col
+give.n <- function(x){
+  return(c(y = median(x)*1.05, label = length(x))) 
+  # experiment with the multiplier to find the perfect position
+}
+
+ggplot(scores_sup, aes(x=rank)) +
+  geom_bar(position="dodge", col="#48705d", fill = "#6aa087") + 
+  labs(title="Frequency of Prediction Rankings",
+       x="Sensitivity Ranking", 
+       y="Number of Occurrences")+
+
+  facet_wrap(~drug_abbrev, 
+             labeller=as_labeller(setNames(sig_drugs, names(sig_labels))),
+             nrow=plot_rows) +
+  stat_summary(fun.data = give.n, geom = "text", fun.y = median,
+                  position = position_dodge(width = 0.75),
+               aes(y=bar_n_displace), size = 4, angle = bar_n_angle) +
+  
+  theme_bw(base_size = 15) + #theme and sizing
+  theme(axis.text.y = element_text(size = 20),
+        axis.text.x = element_text(size = 20),
+        legend.position = "none",
+        plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(hjust = 0.5),
+        axis.text = element_text(size = 10))
+
+ggsave(here("Plots", paste0(length(sigs), "sig_prediction_freq.png")),
+       width=15, height=8)
+```
+
+
+```{r}
+ggplot(scores_sup %>% filter(subtype %in% epi), aes(x=rank)) +
+  geom_bar(position="dodge", col="#48705d", fill = "#6aa087") + 
+  labs(title="Frequency of Predicted Sensitivity Rankings",
+       subtitle = "in Epithelial Cancers",
+       x="Sensitivity Ranking", 
+       y="Number of Occurrences")+
+
+  facet_wrap(~drug_abbrev, 
+             labeller=as_labeller(setNames(sig_drugs, names(sig_labels))),
+             nrow=plot_rows) +
+  stat_summary(fun.data = give.n, geom = "text", fun.y = median,
+                  position = position_dodge(width = 0.75),
+               aes(y=bar_n_displace), size = bar_n_size, angle = bar_n_angle) +
+  
+  theme_bw(base_size = 15) + #theme and sizing
+  theme(axis.text.y = element_text(size = 20),
+        axis.text.x = element_text(size = 20),
+        legend.position = "none",
+        plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(hjust = 0.5),
+        axis.text = element_text(size = 10))
+
+ggsave(here("Plots", "Epithelial Cancers",
+            paste0(length(sigs), "sig_prediction_freq_epi.png")),
+       width=15, height=8)
+```
+
+
+Drug ranking x survival distribution
+
+```{r}
+surv_sup = merge(scores_sup, fit_results, 
+                 by=c("cell_line", "subtype", "drug_abbrev"))
+```
+
+```{r}
+ggplot(surv_sup, aes(x=rank, y=surv)) +
+  geom_violin(fill = "#b4cfc3", col = "#48705d") +
+  geom_boxplot(position="dodge", width=0.2,
+               col="#48705d", fill = "#6aa087") + 
+  labs(title="Distribution of Survival by Predicted Sensitivity Ranking",
+       x="Sensitivity Ranking", 
+       y="Survival")+
+
+  facet_wrap(~drug_abbrev, 
+             labeller=as_labeller(setNames(sig_drugs, names(sig_labels))),
+             nrow=plot_rows) +
+  stat_summary(fun.data = give.n, geom = "text", fun.y = median,
+                  position = position_dodge(width = 0.75),
+               aes(y=viol_n_displace), size = 5, angle = bar_n_angle) +
+  
+  theme_bw(base_size = 15) + #theme and sizing
+  theme(axis.text.y = element_text(size = 20),
+        axis.text.x = element_text(size = 20),
+        legend.position = "none",
+        plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(hjust = 0.5),
+        axis.text = element_text(size = 10))
+
+ggsave(here("Plots", paste0(length(sigs), "sig_prediction_surv.png")),
+       width=15, height=8)
+```
+
+```{r}
+ggplot(surv_sup %>% filter(subtype %in% epi), aes(x=rank, y=surv)) +
+  geom_violin(fill = "#b4cfc3", col = "#48705d") +
+  geom_boxplot(position="dodge", width=0.2,
+               col="#48705d", fill = "#6aa087") + 
+  labs(title="Distribution of Survival by Predicted Sensitivity Ranking",
+       subtitle = "in Epithelial Cancers",
+       x="Sensitivity Ranking", 
+       y="Survival")+
+
+  facet_wrap(~drug_abbrev, 
+             labeller=as_labeller(setNames(sig_drugs, names(sig_labels))),
+             nrow=plot_rows) +
+  stat_summary(fun.data = give.n, geom = "text", fun.y = median,
+                  position = position_dodge(width = 0.75),
+               aes(y=viol_n_displace), size = 5, angle = bar_n_angle) +
+  
+  theme_bw(base_size = 15) + #theme and sizing
+  theme(axis.text.y = element_text(size = 20),
+        axis.text.x = element_text(size = 20),
+        legend.position = "none",
+        plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(hjust = 0.5),
+        axis.text = element_text(size = 10))
+
+ggsave(here("Plots", "Epithelial Cancers",
+            paste0(length(sigs), "sig_prediction_surv_epi.png")),
+       width=15, height=8)
 ```
