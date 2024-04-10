@@ -4,3 +4,4 @@ Data/normalized_exprs.rds
 .RData
 .Rhistory
 *.DS_Store
+IC50 Binning

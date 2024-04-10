@@ -12,10 +12,6 @@ output:
     toc: yes
 ---
 
-```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
-```
-
 This pipeline should be run after `setup.Rmd` and can be used in place of the remaining scripts. The chemogram can use any number of signatures to rank drug response against the GDSC cell lines.
 
 The signatures used here were extracted using the [CisSig](https://github.com/jessicascarborough/cissig) pipeline published by [Scarborough et al](https://www.nature.com/articles/s41698-023-00375-y.pdf). The parameters used for each signature were the same as CisSig, with the exception of the irinotecan, topotecan, and vorinostat signatures, which used a differential expression cutoff of 0.15 instead of 0.2.
@@ -272,6 +268,22 @@ rm(plot_surv_ht)
 ```
 
 
+```{r}
+ggplot(fit_results, aes(x=surv, col = drug_abbrev,)) +
+  geom_density(size=1) +
+  scale_color_manual(values = c("#9b2226","#f94149","#f3722c", "#f9c74f", "#90be6d",
+                                "#43aa8b", "#277da1",  "#4361ee", "#7209b7", "#f72585")) +
+  labs(x="Survival at Standard Dose",
+       y="Frequency",
+       color="Drug",
+       title="Distribution of Survival at Standard Doses",
+       subtitle = paste0(length(unique(fit_results$cell_line)), " Cell Lines"))
+ggsave(here("Plots" ,"Data Prep", 
+            paste0(length(sigs), "drug_survival_dist.png")),
+       width=8, height=6)
+```
+
+
 # Predict Drug Response
 
 ## Generate Signature Scores
@@ -383,7 +395,20 @@ pheatmap::pheatmap(na.omit(plot_score_ht), #data to use
 rm(plot_score_ht)
 ```
 
-
+```{r}
+ggplot(scores_long, aes(x=score, col = drug_abbrev,)) +
+  geom_density(size=1) +
+  scale_color_manual(values = c("#9b2226","#f94149","#f3722c", "#f9c74f", "#90be6d",
+                                "#43aa8b", "#277da1",  "#4361ee", "#7209b7", "#f72585")) +
+  labs(x="Sensitivity Score",
+       y="Frequency",
+       color="Drug",
+       title="Distribution of Signature-derived Sensitivity Scores",
+       subtitle = paste0(length(unique(scores_long$cell_line)), " Cell Lines"))
+ggsave(here("Plots" ,"Data Prep", 
+            paste0(length(sigs), "drug_sigscore_dist.png")),
+       width=8, height=6)
+```
 
 
 
@@ -847,3 +872,141 @@ ggsave(here("Plots", "Epithelial Cancers",
             paste0(length(sigs), "sig_score_v_surv_epi.png")),
        width=15, height=7)
 ```
+
+
+ic50 vs sig score
+
+```{r}
+fitted_dr = readxl::read_excel(here("Data", "Raw Data", "GDSC2_fitted_dose_response.xlsx")) %>%
+  select(COSMIC_ID, DRUG_NAME, LN_IC50, AUC) %>%
+  filter(DRUG_NAME %in% sig_drugs) %>%
+  mutate(cell_line=as.character(COSMIC_ID))
+
+drug_abbrev_key = data.frame(drug_abbrev=names(sigs), #add drug abbrevs to fitted_dr
+                             DRUG_NAME=sig_drugs)
+fitted_dr = left_join(fitted_dr, drug_abbrev_key,
+                      by="DRUG_NAME")
+
+surv_sup = left_join(surv_sup, fitted_dr, by=c("cell_line", "drug_abbrev")) %>%
+  select(cell_line, subtype, drug_abbrev, score, rank, surv, LN_IC50, AUC)
+```
+
+```{r}
+ggplot(surv_sup, aes(x=score, y=LN_IC50)) +
+  geom_point(alpha=0.4, col = "#48705d") +
+  labs(title="Predicted Sensitivity vs. IC50",
+       x="Signature Score", 
+       y="ln(IC50)")+
+
+  facet_wrap(~drug_abbrev, 
+             labeller=as_labeller(setNames(sig_drugs, names(sig_labels))),
+             nrow=plot_rows) +
+  
+  theme_bw(base_size = 15) + #theme and sizing
+  theme(axis.text.y = element_text(size = 20),
+        axis.text.x = element_text(size = 20),
+        legend.position = "none",
+        plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(hjust = 0.5),
+        axis.text = element_text(size = 10))
+
+ggsave(here("Plots",
+            paste0(length(sigs), "sig_score_v_ic50.png")),
+       width=15, height=7)
+```
+
+```{r}
+ggplot(surv_sup %>% filter(subtype %in% epi), aes(x=score, y=LN_IC50)) +
+  geom_point(alpha=0.4, col = "#48705d") +
+  labs(title="Predicted Sensitivity vs. IC50",
+       subtitle = "in Epithelial Cancers",
+       x="Signature Score", 
+       y="ln(IC50)")+
+
+  facet_wrap(~drug_abbrev, 
+             labeller=as_labeller(setNames(sig_drugs, names(sig_labels))),
+             nrow=plot_rows) +
+  
+  theme_bw(base_size = 15) + #theme and sizing
+  theme(axis.text.y = element_text(size = 20),
+        axis.text.x = element_text(size = 20),
+        legend.position = "none",
+        plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(hjust = 0.5),
+        axis.text = element_text(size = 10))
+
+ggsave(here("Plots", "Epithelial Cancers",
+            paste0(length(sigs), "sig_score_v_ic50_epi.png")),
+       width=15, height=7)
+```
+
+
+
+# Subtype Performance Correlation
+
+correlation bw 10sig and 3 sig rankings performance w/i subtypes
+
+```{r}
+#all cancers
+all_3 = seq(1:30)
+names(all_3) = c("CLL", "ESCA", "PRAD", "MM", "LUAD",
+          "BRCA","STAD","SCLC","CESC","ACC",
+          "LGG","HNSC","THCA",
+          "DLBC","ALL","COREAD","LUSC","PAAD",
+          "OV","MESO","BLCA","SKCM","MB","UCEC",
+          "NB","LIHC","LCML","KIRC","GBM","LAML")
+
+all_10 = all_3
+
+all_10 = all_10[order(factor(names(all_10), 
+                             levels =c("CLL","ACC","MB","COREAD","ESCA","UCEC",
+                                       "NB","BLCA","CESC","LIHC","THCA","PRAD",
+                                       "OV","HNSC","PAAD","STAD","ALL","GBM",
+                                       "LUAD","MM","BRCA","LAML","SCLC","MESO",
+                                       "LUSC","LGG","LCML","DLBC","SKCM","KIRC")
+                             ))]
+
+all_3
+all_10 #numbers and names should match up
+
+cor(all_3, all_10,
+    method="spearman") #0.2102336
+cor(all_3, all_10,
+    method="pearson") #0.2102336
+cor(all_3, all_10,
+    method="kendall") #0.1494253
+```
+
+```{r}
+#epi
+epi_3 = seq(1:17)
+names(epi_3) = c("ESCA","PRAD","LUAD","BRCA",
+                 "STAD","CESC","HNSC","THCA",
+                 "COREAD","LUSC","PAAD","OV",
+                 "MESO","BLCA","UCEC","LIHC",
+                 "KIRC")
+
+epi_10 = epi_3
+
+epi_10 = epi_10[order(factor(names(epi_10),
+                             levels =c("COREAD","ESCA", "UCEC",
+                                       "BLCA","CESC", "LIHC","THCA",
+                                       "PRAD","OV","HNSC","PAAD",
+                                       "STAD","LUAD","BRCA","MESO","LUSC",
+                                       "KIRC")
+                             ))]
+
+epi_3
+epi_10
+
+cor(epi_3, epi_10,
+    method="spearman") #0.07598039
+cor(epi_3, epi_10,
+    method="pearson") #0.07598039
+cor(epi_3, epi_10,
+    method="kendall") #0.02941176
+```
+
+
+
+
