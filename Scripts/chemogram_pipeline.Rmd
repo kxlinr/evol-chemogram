@@ -681,12 +681,21 @@ if(length(sigs) <= 5){
   bar_n_angle = 0
   bar_n_size = 5
   viol_n_displace = -0.03
+  
+  col_values = c("#5f957d", "#406453", "#304b3e", "#203229", "#000000")[1:length(sigs)]
+  fill_values = c("#c1d7cd", "#8fb7a5", "#507c68", "#48705c", "#406453")[1:length(sigs)]
+  
 } else {
   plot_rows = 2
   bar_n_displace = -20
   bar_n_angle = 45
   bar_n_size = 4
   viol_n_displace = -0.05
+  
+  col_values = c("#5f957d", "#5f957d", "#5f957d", "#406453", "#406453",
+                 "#406453", "#304b3e", "#203229", "#000000", "#000000")[1:length(sigs)]
+  fill_values = c("#fcfaf9", "#dae7e1", "#c1d7cd", "#a8c7b9", "#8fb7a5",
+                   "#76a791","#5f957d", "#507c68", "#48705c", "#406453")[1:length(sigs)]
 }
 
 #make a funciton and list to label each facet with the full name per drug
@@ -764,13 +773,14 @@ surv_sup = merge(scores_sup, fit_results,
 ```
 
 ```{r}
-ggplot(surv_sup, aes(x=rank, y=surv)) +
-  geom_violin(fill = "#b4cfc3", col = "#48705d") +
-  geom_boxplot(position="dodge", width=0.2,
-               col="#48705d", fill = "#6aa087") + 
+ggplot(surv_sup, aes(x=rank, y=surv, col=rank, fill=rank)) +
+  geom_boxplot(position="dodge") + 
   labs(title="Distribution of Survival by Predicted Sensitivity Ranking",
        x="Sensitivity Ranking", 
        y="Survival")+
+  
+  scale_color_manual(values = col_values) +
+  scale_fill_manual(values = fill_values) +
 
   facet_wrap(~drug_abbrev, 
              labeller=as_labeller(setNames(sig_drugs, names(sig_labels))),
@@ -792,14 +802,15 @@ ggsave(here("Plots", paste0(length(sigs), "sig_prediction_surv.png")),
 ```
 
 ```{r}
-ggplot(surv_sup %>% filter(subtype %in% epi), aes(x=rank, y=surv)) +
-  geom_violin(fill = "#b4cfc3", col = "#48705d") +
-  geom_boxplot(position="dodge", width=0.2,
-               col="#48705d", fill = "#6aa087") + 
+ggplot(surv_sup %>% filter(subtype %in% epi), aes(x=rank, y=surv, fill=rank, col=rank)) +
+  geom_boxplot(position="dodge") + 
   labs(title="Distribution of Survival by Predicted Sensitivity Ranking",
        subtitle = "in Epithelial Cancers",
        x="Sensitivity Ranking", 
        y="Survival")+
+  
+    scale_color_manual(values = col_values) +
+  scale_fill_manual(values = fill_values) +
 
   facet_wrap(~drug_abbrev, 
              labeller=as_labeller(setNames(sig_drugs, names(sig_labels))),
@@ -871,6 +882,31 @@ ggplot(surv_sup %>% filter(subtype %in% epi), aes(x=score, y=surv)) +
 ggsave(here("Plots", "Epithelial Cancers",
             paste0(length(sigs), "sig_score_v_surv_epi.png")),
        width=15, height=7)
+```
+
+scatter of rank vs surv
+
+```{r}
+ggplot(surv_sup, aes(x=as.numeric(rank), y=surv)) +
+  geom_point(fill = "#b4cfc3", col = "#48705d", alpha=0.5) +
+  labs(title="Distribution of Survival by Predicted Sensitivity Ranking",
+       x="Sensitivity Ranking", 
+       y="Survival")+
+
+  facet_wrap(~drug_abbrev, 
+             labeller=as_labeller(setNames(sig_drugs, names(sig_labels))),
+             nrow=plot_rows) +
+  stat_summary(fun.data = give.n, geom = "text", fun.y = median,
+                  position = position_dodge(width = 0.75),
+               aes(y=viol_n_displace), size = 5, angle = bar_n_angle) +
+  
+  theme_bw(base_size = 15) + #theme and sizing
+  theme(axis.text.y = element_text(size = 20),
+        axis.text.x = element_text(size = 20),
+        legend.position = "none",
+        plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(hjust = 0.5),
+        axis.text = element_text(size = 10))
 ```
 
 
