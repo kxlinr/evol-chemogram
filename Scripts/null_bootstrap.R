@@ -296,8 +296,9 @@ for (i in 1:length(subtype)){
 rm(subset)
 
 #remove unclassified cell lines
-scored_ranks = scored_ranks %>% filter(subtype != "UNCLASSIFIED")
-boot_results_all = boot_results_all %>% filter(subtype != "UNCLASSIFIED")
+chemogram_results = chemogram_results %>% filter(subtype != "UNCLASSIFIED") #-131
+scored_ranks = na.omit(scored_ranks) %>% filter(subtype != "UNCLASSIFIED") #0
+boot_results_all = boot_results_all %>% filter(subtype != "UNCLASSIFIED") #-130
 boot_subtype_results = boot_subtype_results %>% filter(subtype != "UNCLASSIFIED")
 subtype_scores = subtype_scores %>% filter(subtype != "UNCLASSIFIED")
 
@@ -377,7 +378,7 @@ ggplot(data=half_box_data, aes(x=subtype, y=accuracy)) +
   scale_x_discrete(limits = cancer_order) +
   
   labs(title = paste0("Predictive Accuracy of Random Signatures vs ",length(sigs),"-sig Chemogram"), #titles and axis labels
-       subtitle = paste0(nrow(scored_ranks)," Cell Lines, ", n, " Bootstrap Iterations"),
+       subtitle = paste0(length(unique(half_box_data$cell_line))," Cell Lines, ", n, " Bootstrap Iterations"),
        y = "Predictive Accuracy", x = "Disease Site") +
   theme_bw(base_size = 15) + #theme and sizing
   theme(axis.text.y = element_text(size = 20),
@@ -425,7 +426,7 @@ ggplot(plot_null, aes(x=`Prediction Method`, y=`Predictive Accuracy`)) +
   annotate("text", x = 1.5, y = 1.05, label = paste0("t-test: p = ", round(p[["p.value"]], 6)), size = 5) +
   
   labs(title = paste0("Predictive Accuracy of Random Signatures vs ", length(sigs), "-sig Chemogram"), #titles and axis labels
-       subtitle = paste0(nrow(scored_ranks)," Cell Lines, ", n, " Bootstrap Iterations"),
+       subtitle = paste0(length(unique(chemogram_results$cell_line))," Cell Lines, ", n, " Bootstrap Iterations"),
        y = "Predictive Accuracy", x = "Prediction Method") +
   
   theme_bw(base_size = 15) + #theme and sizing
@@ -455,7 +456,7 @@ ggplot(data=boot_subtype_results, aes(x=subtype, y=n_accuracy)) +
   #coord_flip() +
   scale_y_continuous(limits=c(0,1), breaks = c(0,0.25,.5,.75,1))+
   labs(title = paste0("Predictive Accuracy of Random Signatures vs ",length(sigs),"-sig Chemogram"), #titles and axis labels
-       subtitle = paste0(nrow(scored_ranks)," Cell Lines, ", n, " Bootstrap Iterations"),
+       subtitle = paste0(length(unique(chemogram_results$cell_line))," Cell Lines, ", n, " Bootstrap Iterations"),
        y = "Average Predictive Accuracy", x = "Disease Site") +
   
   theme_bw(base_size = 15) + #theme and sizing
@@ -522,7 +523,7 @@ ggplot(data=half_box_data_epi, aes(x=subtype, y=accuracy)) +
   scale_x_discrete(limits = cancer_order_epi) +
   
   labs(title = paste0("Predictive Accuracy of Random Signatures vs ",length(sigs),"-sig Chemogram"), #titles and axis labels
-       subtitle = paste0(nrow(scored_ranks_full_epi)," Epithelial Cell Lines, ", n, " Bootstrap Iterations"),
+       subtitle = paste0(length(unique(half_box_data_epi$cell_line))," Epithelial Cell Lines, ", n, " Bootstrap Iterations"),
        y = "Predictive Accuracy", x = "Disease Site") +
   theme_bw(base_size = 15) + #theme and sizing
   theme(axis.text.y = element_text(size = 20),
@@ -570,7 +571,7 @@ ggplot(plot_null_epi, aes(x=`Prediction Method`, y=`Predictive Accuracy`)) +
                width = 0.15, size = 1, linetype = "solid",
                position=position_dodge(preserve="total")) +
   
-  annotate("text", x = 1.5, y = 1, label = paste0("t-test: p = ", round(p_epi[["p.value"]], 6)), size = 5) +
+  annotate("text", x = 1.5, y = 1, label = paste0("t-test: p = ", round(p_epi[["p.value"]], 9)), size = 5) +
   
   labs(title = paste0("Predictive Accuracy of Random Signatures vs ",length(sigs),"-sig Chemogram"), #titles and axis labels
        subtitle = paste0(nrow(scored_ranks_full_epi)," Epithelial Cell Lines, ", n, " Bootstrap Iterations"),
