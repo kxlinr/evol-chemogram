@@ -561,10 +561,11 @@ subtype_scores$subtype <- factor(subtype_scores$subtype,
 subtype_scores = subtype_scores[order(subtype_scores$subtype),]
 
 #save
-saveRDS(scored_ranks_full, here("Results", paste0(length(sigs),"sig_accuracy_scores_cleaned.rds")))
+# saveRDS(scored_ranks_full, here("Results", paste0(length(sigs),"sig_accuracy_scores_cleaned.rds")))
 ```
 
 ## Boxplot
+
 
 ```{r warning=FALSE}
 # beeswarm boxplot
@@ -574,7 +575,9 @@ p1 = ggplot(scored_ranks_full, aes(x = subtype, y=accuracy)) + #select data to p
   stat_summary(fun.y = mean, geom = "errorbar", aes(ymax = ..y.., ymin = ..y..), #add in a line to indicate the mean
                width = 0.4, size = 2, linetype = "solid") +
   
-  # geom_label(data=subtype_scores, aes(x = subtype, y = 0, label = n), size=7) +
+  geom_label(data=na.omit(subtype_scores), aes(x = subtype, y = 0, label = n), #add n
+             label.padding = unit(0.15, "lines"), label.size = 0.4, size = 8) +
+  
  
   scale_y_continuous(limits = c(0, 1), breaks = c(0, 0.2, 0.4, 0.6, 0.8, 1)) +
   
@@ -613,6 +616,8 @@ epi = c("HNSC", "ESCA", "BRCA",
 ```{r}
 scored_ranks_epi = scored_ranks_full %>%
   filter(subtype %in% epi)
+subtype_scores_epi = subtype_scores %>%
+  filter(subtype %in% epi)
 
 p2 = ggplot(scored_ranks_epi, aes(x = subtype, y=accuracy)) + #select data to plot
   geom_boxplot(width=0.4, fill="#9b2226", alpha = 0.6, fatten = NULL) + #boxplot, fatten=null is getting rid of the median line
@@ -620,7 +625,8 @@ p2 = ggplot(scored_ranks_epi, aes(x = subtype, y=accuracy)) + #select data to pl
   stat_summary(fun.y = mean, geom = "errorbar", aes(ymax = ..y.., ymin = ..y..), #add in a line to indicate the mean
                width = 0.4, size = 2, linetype = "solid") +
   
-  # geom_label(data=subtype_scores, aes(x = subtype, y = 0, label = n), size=7) +
+  geom_label(data=subtype_scores_epi, aes(x = subtype, y = 0, label = n), #add n
+             label.padding = unit(0.15, "lines"), label.size = 0.4, size = 8) +
  
   scale_y_continuous(limits = c(0, 1), breaks = c(0, 0.2, 0.4, 0.6, 0.8, 1)) +
   
