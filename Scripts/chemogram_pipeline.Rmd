@@ -1048,7 +1048,3 @@ cor(epi_3, epi_10,
 cor(epi_3, epi_10,
     method="kendall") #0.02941176
 ```
-
-
-
-
