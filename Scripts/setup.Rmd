@@ -319,6 +319,86 @@ saveRDS(exprs_norm, here("Data", "normalized_exprs.rds"))
 ```
 
 
+
+Try normalizing using a set of housekeeping genes instead of the 2 chunks above (z-scores).
+
+```{r}
+#check exprs distribution of a few housekeeping genes of interest
+plot_exprs = pivot_longer(raw_exprs,
+                          names_to = "COSMIC_ID",
+                          values_to = "raw_exprs",
+                          cols=-c("GENE_SYMBOLS", "GENE_title"))
+
+library(patchwork)
+(ggplot(plot_exprs %>% filter(GENE_SYMBOLS=="GAPDH"), aes(y=raw_exprs)) +
+  geom_boxplot() + 
+  scale_y_continuous(limits=c(min(plot_exprs$raw_exprs[which(plot_exprs$GENE_SYMBOLS=="GAPDH")]), 13)) +
+  labs(title="GAPDH Raw Expression")) +
+(ggplot(plot_exprs %>% filter(GENE_SYMBOLS=="ACTB"), aes(y=raw_exprs)) +
+  geom_boxplot() + 
+   scale_y_continuous(limits=c(min(plot_exprs$raw_exprs[which(plot_exprs$GENE_SYMBOLS=="ACTB")]), 13)) +
+  labs(title="ACTB Raw Expression"))+
+(ggplot(plot_exprs %>% filter(GENE_SYMBOLS=="RPL13A"), aes(y=raw_exprs)) +
+  geom_boxplot() + 
+   scale_y_continuous(limits=c(min(plot_exprs$raw_exprs[which(plot_exprs$GENE_SYMBOLS=="RPL13A")]), 13)) +
+  labs(title="RPL13A Raw Expression")) +
+(ggplot(plot_exprs %>% filter(GENE_SYMBOLS=="TUBB"), aes(y=raw_exprs)) +
+  geom_boxplot() + 
+   scale_y_continuous(limits=c(min(plot_exprs$raw_exprs[which(plot_exprs$GENE_SYMBOLS=="TUBB")]), 13)) +
+  labs(title="TUBB Raw Expression"))+
+(ggplot(plot_exprs %>% filter(GENE_SYMBOLS=="APOL3"), aes(y=raw_exprs)) +
+  geom_boxplot() + 
+   scale_y_continuous(limits=c(min(plot_exprs$raw_exprs[which(plot_exprs$GENE_SYMBOLS=="APOL3")]), 13)) +
+  labs(title="APOL3 Raw Expression"))
+
+(ggplot(plot_exprs, aes(x=raw_exprs, y="All genes")) +
+  geom_histogram()+
+  scale_x_continuous(limits=c(min(plot_exprs$raw_exprs), 13)) +
+  labs(title="All Raw Expression"))
+
+
+range(plot_exprs %>% filter(GENE_SYMBOLS=="GAPDH")%>%select(raw_exprs))
+range(plot_exprs %>% filter(GENE_SYMBOLS=="ACTB")%>%select(raw_exprs))
+range(plot_exprs %>% filter(GENE_SYMBOLS=="RPL13A")%>%select(raw_exprs))
+range(plot_exprs %>% filter(GENE_SYMBOLS=="TUBB")%>%select(raw_exprs))
+range(plot_exprs %>% filter(GENE_SYMBOLS=="APOL3")%>%select(raw_exprs))
+range(plot_exprs$raw_exprs)
+
+
+#gapdh has the smallest range/is most consistently high, so let's try using just that one
+```
+
+```{r}
+ctrl = raw_exprs[which(raw_exprs$GENE_SYMBOLS=="GAPDH"),] #select just the gapdh exprs values
+
+norm = raw_exprs #new df to replace w normalized vals
+
+for(i in 3:ncol(raw_exprs)){
+  norm[,i] = norm[,i]/as.numeric(ctrl[,i]) #normalize all genes within samples
+}
+
+plot_exprs_norm = pivot_longer(norm, #pivot to check
+                          names_to = "COSMIC_ID",
+                          values_to = "norm_exprs",
+                          cols=-c("GENE_SYMBOLS", "GENE_title"))
+range(plot_exprs_norm %>% filter(GENE_SYMBOLS=="GAPDH")%>%select(norm_exprs)) #compare ranges again
+range(plot_exprs_norm %>%select(norm_exprs))
+
+exprs_norm2 = pivot_wider(plot_exprs_norm %>% filter(GENE_SYMBOLS != "UNCLASSIFIED"), #format the same as the other norm exprs df
+                          values_from = "norm_exprs",
+                          names_from = "GENE_SYMBOLS",
+                          id_cols="COSMIC_ID")
+
+exprs_norm2 = exprs_norm2 %>% #order the columns alphanetically like the other norm exprs df
+  select(COSMIC_ID, sort(colnames(exprs_norm2[,-1])))
+```
+
+```{r}
+#Save
+saveRDS(exprs_norm2, here("Data", "normalized_exprs_to_gapdh.rds"))
+```
+
+
 ## Fitted Drug Response
 
 Make a key to decipher the drug IDs using the fitted drug response dataset.
