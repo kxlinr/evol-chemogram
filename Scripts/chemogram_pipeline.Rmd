@@ -47,8 +47,8 @@ conflicted::conflict_prefer("select", "dplyr")
 ```{r load_prepped_data}
 cell_lines = readRDS(here("Data", "cleaned_cell_line_meta.rds"))
 subtype_key = readRDS(here("Data", "subtype_key.rds"))
-# exprs_norm = readRDS(here("Data", "normalized_exprs.rds"))
-exprs_norm = readRDS(here("Data", "normalized_exprs_to_gapdh.rds"))
+exprs_norm = readRDS(here("Data", "normalized_exprs.rds"))
+# exprs_norm = readRDS(here("Data", "normalized_exprs_to_gapdh.rds"))
 drug_id_key = readRDS(here("Data", "drug_id_key.rds"))
 norm_dose_resp = readRDS(here("Data", "prepped_drug_resp.rds"))
 ```
@@ -605,7 +605,7 @@ p1
 
 ggsave(plot=p1, 
        filename=here("Plots",
-                     paste0(length(sigs), "sig_accuracy_boxplots_gapdh.png")), 
+                     paste0(length(sigs), "sig_accuracy_boxplots.png")), 
        width = 15, height = 9) #save plot
 ```
 
