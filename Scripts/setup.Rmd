@@ -372,10 +372,13 @@ range(plot_exprs$raw_exprs)
 ctrl = raw_exprs[which(raw_exprs$GENE_SYMBOLS=="GAPDH"),] #select just the gapdh exprs values
 
 norm = raw_exprs #new df to replace w normalized vals
+unique(colnames(norm) == colnames(ctrl)) #should just be TRUE
 
 for(i in 3:ncol(raw_exprs)){
   norm[,i] = norm[,i]/as.numeric(ctrl[,i]) #normalize all genes within samples
 }
+
+unique(as.vector(norm %>% filter(GENE_SYMBOLS=="GAPDH"))) #should only have 2 genes names and the number 1
 
 plot_exprs_norm = pivot_longer(norm, #pivot to check
                           names_to = "COSMIC_ID",

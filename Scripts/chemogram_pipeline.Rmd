@@ -47,8 +47,8 @@ conflicted::conflict_prefer("select", "dplyr")
 ```{r load_prepped_data}
 cell_lines = readRDS(here("Data", "cleaned_cell_line_meta.rds"))
 subtype_key = readRDS(here("Data", "subtype_key.rds"))
-exprs_norm = readRDS(here("Data", "normalized_exprs.rds"))
-# exprs_norm = readRDS(here("Data", "normalized_exprs_to_gapdh.rds"))
+# exprs_norm_all = readRDS(here("Data", "normalized_exprs.rds"))
+exprs_norm = readRDS(here("Data", "normalized_exprs_to_gapdh.rds"))
 drug_id_key = readRDS(here("Data", "drug_id_key.rds"))
 norm_dose_resp = readRDS(here("Data", "prepped_drug_resp.rds"))
 ```
@@ -302,14 +302,14 @@ To streamline the process, we'll create a function to calculate the signature sc
 
 ```{r FX_sig_score}
 #F(X) to subset genes within each drug sensitivity signature, then derive the sensitivity score per cell line
-sig_score = function(sig_genes, exprs_norm, drug_abbrev){
+sig_score = function(sig_genes, exprs, drug_abbrev){
   
-  exprs_norm2 = exprs_norm %>%
+  exprs_norm2 = exprs %>%
     dplyr::select(COSMIC_ID, all_of(sig_genes))
   
   #Find signature score for each cell line
   sig_exprs = exprs_norm2[,-1] %>% 
-    mutate(score = apply(.,1,median), cosmic_id = exprs_norm$COSMIC_ID)
+    mutate(score = apply(.,1,median), cosmic_id = exprs$COSMIC_ID)
   
   #clean up result
   score = sig_exprs %>% dplyr::select(cosmic_id, score)
@@ -325,12 +325,16 @@ sig_score = function(sig_genes, exprs_norm, drug_abbrev){
 The above function is now run for each of the signatures.
 
 ```{r sig_score}
+#rm "DATA." before each cosmic id
+exprs_norm = exprs_norm %>%
+  mutate(COSMIC_ID = substr(COSMIC_ID, 6, nchar(COSMIC_ID)))
+
 # #Run the above function for each sig
 scores = list()
 
 for(i in 1:length(sigs)){
   scores[[i]] = sig_score(sig_genes=sigs[[i]],
-                          exprs_norm=exprs_norm,
+                          exprs=exprs_norm,
                           drug_abbrev=names(sigs)[i])
   names(scores)[i] = names(sigs)[i]
 }
@@ -340,7 +344,7 @@ for(i in 1:length(sigs)){
 #Label cancer type of each cell line
 for(i in 1:length(scores)){
   #label subtypes
-  scores[[i]] = merge(scores[[i]], subtype_key, all=TRUE)
+  scores[[i]] = full_join(scores[[i]], subtype_key, by="cell_line")
 
   #replace NAs with "unclassified"
   scores[[i]]$subtype = scores[[i]]$subtype %>%
@@ -416,7 +420,56 @@ ggplot(scores_long, aes(x=score, col = drug_abbrev,)) +
 ggsave(here("Plots" ,"Data Prep", 
             paste0(length(sigs), "drug_sigscore_dist.png")),
        width=8, height=6)
+
+ggplot(scores_long, aes(x=drug_abbrev, y=score)) +
+  geom_violin() +
+  geom_boxplot(width=0.1) +
+  labs(title="Distribution of Signature-derived Sensitivity Scores",
+       subtitle = paste0(length(unique(scores_long$cell_line)), " Cell Lines"))
+ggsave(here("Plots" ,"Data Prep", 
+            paste0(length(sigs), "drug_sigscore_box.png")),
+       width=8, height=6)
 ```
+
+comparing sig scores bw different expression normalization methods
+
+```{r}
+# comp = scores_long %>%
+#   mutate(scores_gapdh = score) %>%
+#   select(-score)%>%
+#   mutate(cell_line = substr(cell_line, 6, nchar(cell_line)))
+# 
+# comp2 = scores_long %>%
+#   mutate(scores_z =score) %>%
+#   select(-score)
+# 
+# comp3 = full_join(comp, comp2, by=c("cell_line", "drug_abbrev")) %>%
+#   mutate(subtype=subtype.y) %>%
+#   select(-subtype.x, -subtype.y)
+# 
+# ggplot(comp3, aes(x=scores_gapdh, y=scores_z)) +
+#   geom_point(alpha=0.4) +
+#   labs(title = "Sig Scores From Different Expression Normalization Methods",
+#        subtitle = "Norm to GAPDH vs Z-Score Across All Genes (Within Sample)",
+#        x="Sig Scores from GAPDH-normalized Expression",
+#        y="Sig Scores from Expression Z-scores") +
+#   facet_wrap(~drug_abbrev)
+# ggsave(here("Plots" ,"Data Prep", 
+#             paste0(length(sigs), "drug_sig_score_correlations.png")),
+#        width=12, height=6)
+# 
+# cor.test(comp3$scores_gapdh[which(comp3$drug_abbrev=="cis")],
+#          comp3$scores_z[which(comp3$drug_abbrev=="cis")],
+#          method = 'spearman')
+# cor.test(comp3$scores_gapdh[which(comp3$drug_abbrev=="gem")],
+#          comp3$scores_z[which(comp3$drug_abbrev=="gem")],
+#          method = 'spearman')
+# cor.test(comp3$scores_gapdh[which(comp3$drug_abbrev=="fu")],
+#          comp3$scores_z[which(comp3$drug_abbrev=="fu")],
+#          method = 'spearman')
+```
+
+
 
 
 
@@ -605,7 +658,7 @@ p1
 
 ggsave(plot=p1, 
        filename=here("Plots",
-                     paste0(length(sigs), "sig_accuracy_boxplots.png")), 
+                     paste0(length(sigs), "sig_accuracy_boxplots_gapdh.png")), 
        width = 15, height = 9) #save plot
 ```
 
@@ -653,7 +706,7 @@ p2
 
 ggsave(plot=p2, 
        filename=here("Plots", "Epithelial Cancers",
-                     paste0(length(sigs), "sig_accuracy_boxplots_epi_LENGTHOPTCISGEM.png")), 
+                     paste0(length(sigs), "sig_accuracy_boxplots_epi_gapdh.png")), 
        width = 15, height = 9) #save plot
 
 ```
@@ -745,7 +798,7 @@ ggplot(scores_sup, aes(x=rank)) +
         plot.subtitle = element_text(hjust = 0.5),
         axis.text = element_text(size = 10))
 
-ggsave(here("Plots", paste0(length(sigs), "sig_prediction_freq.png")),
+ggsave(here("Plots", paste0(length(sigs), "sig_prediction_freq_gapdh.png")),
        width=15, height=8)
 ```
 
@@ -774,7 +827,7 @@ ggplot(scores_sup %>% filter(subtype %in% epi), aes(x=rank)) +
         axis.text = element_text(size = 10))
 
 ggsave(here("Plots", "Epithelial Cancers",
-            paste0(length(sigs), "sig_prediction_freq_epi.png")),
+            paste0(length(sigs), "sig_prediction_freq_epi_gapdh.png")),
        width=15, height=8)
 ```
 
@@ -811,7 +864,7 @@ ggplot(surv_sup, aes(x=rank, y=surv, col=rank, fill=rank)) +
         plot.subtitle = element_text(hjust = 0.5),
         axis.text = element_text(size = 10))
 
-ggsave(here("Plots", paste0(length(sigs), "sig_prediction_surv.png")),
+ggsave(here("Plots", paste0(length(sigs), "sig_prediction_surv_gapdh.png")),
        width=15, height=8)
 ```
 
@@ -842,7 +895,7 @@ ggplot(surv_sup %>% filter(subtype %in% epi), aes(x=rank, y=surv, fill=rank, col
         axis.text = element_text(size = 10))
 
 ggsave(here("Plots", "Epithelial Cancers",
-            paste0(length(sigs), "sig_prediction_surv_epi.png")),
+            paste0(length(sigs), "sig_prediction_surv_epi_gapdh.png")),
        width=15, height=8)
 ```
 
@@ -869,7 +922,7 @@ ggplot(surv_sup, aes(x=score, y=surv)) +
         axis.text = element_text(size = 10))
 
 ggsave(here("Plots",
-            paste0(length(sigs), "sig_score_v_surv.png")),
+            paste0(length(sigs), "sig_score_v_surv_gapdh.png")),
        width=15, height=7)
 ```
 
@@ -894,7 +947,7 @@ ggplot(surv_sup %>% filter(subtype %in% epi), aes(x=score, y=surv)) +
         axis.text = element_text(size = 10))
 
 ggsave(here("Plots", "Epithelial Cancers",
-            paste0(length(sigs), "sig_score_v_surv_epi.png")),
+            paste0(length(sigs), "sig_score_v_surv_epi_gapdh.png")),
        width=15, height=7)
 ```
 
