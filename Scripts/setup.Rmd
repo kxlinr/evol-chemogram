@@ -331,31 +331,42 @@ plot_exprs = pivot_longer(raw_exprs,
 
 library(patchwork)
 (ggplot(plot_exprs %>% filter(GENE_SYMBOLS=="GAPDH"), aes(y=raw_exprs)) +
-  geom_boxplot() + 
+  geom_boxplot(width=0.1) + 
   scale_y_continuous(limits=c(min(plot_exprs$raw_exprs[which(plot_exprs$GENE_SYMBOLS=="GAPDH")]), 13)) +
-  labs(title="GAPDH Raw Expression")) +
-(ggplot(plot_exprs %>% filter(GENE_SYMBOLS=="ACTB"), aes(y=raw_exprs)) +
-  geom_boxplot() + 
-   scale_y_continuous(limits=c(min(plot_exprs$raw_exprs[which(plot_exprs$GENE_SYMBOLS=="ACTB")]), 13)) +
-  labs(title="ACTB Raw Expression"))+
-(ggplot(plot_exprs %>% filter(GENE_SYMBOLS=="RPL13A"), aes(y=raw_exprs)) +
-  geom_boxplot() + 
-   scale_y_continuous(limits=c(min(plot_exprs$raw_exprs[which(plot_exprs$GENE_SYMBOLS=="RPL13A")]), 13)) +
-  labs(title="RPL13A Raw Expression")) +
-(ggplot(plot_exprs %>% filter(GENE_SYMBOLS=="TUBB"), aes(y=raw_exprs)) +
-  geom_boxplot() + 
-   scale_y_continuous(limits=c(min(plot_exprs$raw_exprs[which(plot_exprs$GENE_SYMBOLS=="TUBB")]), 13)) +
-  labs(title="TUBB Raw Expression"))+
-(ggplot(plot_exprs %>% filter(GENE_SYMBOLS=="APOL3"), aes(y=raw_exprs)) +
-  geom_boxplot() + 
-   scale_y_continuous(limits=c(min(plot_exprs$raw_exprs[which(plot_exprs$GENE_SYMBOLS=="APOL3")]), 13)) +
-  labs(title="APOL3 Raw Expression"))
+  labs(title="GAPDH Raw Expression")) 
+# (ggplot(plot_exprs %>% filter(GENE_SYMBOLS=="ACTB"), aes(y=raw_exprs)) +
+#   geom_boxplot() + 
+#    scale_y_continuous(limits=c(min(plot_exprs$raw_exprs[which(plot_exprs$GENE_SYMBOLS=="ACTB")]), 13)) +
+#   labs(title="ACTB Raw Expression"))+
+# (ggplot(plot_exprs %>% filter(GENE_SYMBOLS=="RPL13A"), aes(y=raw_exprs)) +
+#   geom_boxplot() + 
+#    scale_y_continuous(limits=c(min(plot_exprs$raw_exprs[which(plot_exprs$GENE_SYMBOLS=="RPL13A")]), 13)) +
+#   labs(title="RPL13A Raw Expression")) +
+# (ggplot(plot_exprs %>% filter(GENE_SYMBOLS=="TUBB"), aes(y=raw_exprs)) +
+#   geom_boxplot() + 
+#    scale_y_continuous(limits=c(min(plot_exprs$raw_exprs[which(plot_exprs$GENE_SYMBOLS=="TUBB")]), 13)) +
+#   labs(title="TUBB Raw Expression"))+
+# (ggplot(plot_exprs %>% filter(GENE_SYMBOLS=="APOL3"), aes(y=raw_exprs)) +
+#   geom_boxplot() + 
+#    scale_y_continuous(limits=c(min(plot_exprs$raw_exprs[which(plot_exprs$GENE_SYMBOLS=="APOL3")]), 13)) +
+#   labs(title="APOL3 Raw Expression"))
 
-(ggplot(plot_exprs, aes(x=raw_exprs, y="All genes")) +
-  geom_histogram()+
-  scale_x_continuous(limits=c(min(plot_exprs$raw_exprs), 13)) +
-  labs(title="All Raw Expression"))
+(ggplot(plot_exprs, aes(y=raw_exprs, x="All Genes")) +
+  geom_violin(fill="#cad2c5", col = "#2f3e46") +
+  geom_boxplot(width=0.05, fill="#52796f", col="#2f3e46") +
+   
+  geom_violin(data = plot_exprs %>% filter(GENE_SYMBOLS=="GAPDH"), aes(y=raw_exprs, x="GAPDH"),
+              fill="#cad2c5", col = "#2f3e46") +
+  geom_boxplot(data = plot_exprs %>% filter(GENE_SYMBOLS=="GAPDH"), aes(y=raw_exprs, x="GAPDH"),
+    width=0.05, fill="#52796f", col="#2f3e46") +
+   
+  scale_y_continuous(limits=c(min(plot_exprs$raw_exprs), 14)) +
+  labs(title="Raw Expression of All Genes vs GAPDH",
+       x="Gene(s)",
+       y="Raw Expression Value"))
 
+ggsave(here("Plots" ,"Data Prep", "exprs_dist_gapdh.png"),
+       width=8, height=6)
 
 range(plot_exprs %>% filter(GENE_SYMBOLS=="GAPDH")%>%select(raw_exprs))
 range(plot_exprs %>% filter(GENE_SYMBOLS=="ACTB")%>%select(raw_exprs))
