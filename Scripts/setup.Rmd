@@ -403,7 +403,7 @@ exprs_norm2 = pivot_wider(plot_exprs_norm %>% filter(GENE_SYMBOLS != "UNCLASSIFI
                           names_from = "GENE_SYMBOLS",
                           id_cols="COSMIC_ID")
 
-exprs_norm2 = exprs_norm2 %>% #order the columns alphanetically like the other norm exprs df
+exprs_norm2 = exprs_norm2 %>% #order the columns alphabetically like the other norm exprs df
   select(COSMIC_ID, sort(colnames(exprs_norm2[,-1])))
 ```
 

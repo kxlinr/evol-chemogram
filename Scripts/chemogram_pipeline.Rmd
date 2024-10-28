@@ -47,8 +47,8 @@ conflicted::conflict_prefer("select", "dplyr")
 ```{r load_prepped_data}
 cell_lines = readRDS(here("Data", "cleaned_cell_line_meta.rds"))
 subtype_key = readRDS(here("Data", "subtype_key.rds"))
-exprs_norm_all = readRDS(here("Data", "normalized_exprs.rds"))
-exprs_norm = readRDS(here("Data", "normalized_exprs_to_gapdh.rds"))
+# exprs_norm_all = readRDS(here("Data", "normalized_exprs.rds")) #exprs data z-scores
+exprs_norm = readRDS(here("Data", "normalized_exprs_to_gapdh.rds")) #exprs data norm to GAPDH
 drug_id_key = readRDS(here("Data", "drug_id_key.rds"))
 norm_dose_resp = readRDS(here("Data", "prepped_drug_resp.rds"))
 ```
@@ -80,6 +80,8 @@ sig_drugs=sig_drugs[c(1,3,4)]
 sigs[["cis"]] = c("LRRC8C", "LY6K", "MMP10","SLFN11", "STOML2","USP31","WDR3", "ZNF750")
 sigs[["gem"]] = c("CRLF3", "MLKL", "POLR3G", "PROCR", "RELB", "SLFN11")
 ```
+
+
 
 
 
