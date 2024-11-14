@@ -47,8 +47,8 @@ conflicted::conflict_prefer("select", "dplyr")
 ```{r load_prepped_data}
 cell_lines = readRDS(here("Data", "cleaned_cell_line_meta.rds"))
 subtype_key = readRDS(here("Data", "subtype_key.rds"))
-# exprs_norm_all = readRDS(here("Data", "normalized_exprs.rds")) #exprs data z-scores
-exprs_norm = readRDS(here("Data", "normalized_exprs_to_gapdh.rds")) #exprs data norm to GAPDH
+exprs_norm = readRDS(here("Data", "normalized_exprs.rds")) #exprs data z-scores
+# exprs_norm = readRDS(here("Data", "normalized_exprs_to_gapdh.rds")) #exprs data norm to GAPDH
 drug_id_key = readRDS(here("Data", "drug_id_key.rds"))
 norm_dose_resp = readRDS(here("Data", "prepped_drug_resp.rds"))
 ```
@@ -433,74 +433,74 @@ ggsave(here("Plots" ,"Data Prep",
        width=8, height=6)
 ```
 
-comparing sig scores bw different expression normalization methods
+Comparing sig scores bw different expression normalization methods
 
 ```{r}
-comp = scores_long %>%
-  mutate(scores_gapdh = score) %>%
-  select(-score)
-
-comp2 = scores_long %>%
-  mutate(scores_z =score) %>%
-  select(-score)
-
-comp3 = full_join(comp, comp2, by=c("cell_line", "drug_abbrev")) %>%
-  mutate(subtype=subtype.y) %>%
-  select(-subtype.x, -subtype.y)
-
-ggplot(comp3, aes(x=scores_gapdh, y=scores_z)) +
-  geom_point(alpha=0.4) +
-  scale_y_continuous(limits=c(-1, 1.5), breaks=c(-1, 0, 1)) +
-  scale_x_continuous(limits=c(0.2,0.6)) +
-  labs(title = "Signature Scores From Different Expression Normalization Methods",
-       subtitle = "Normalized to GAPDH vs Z-Score Across All Genes (Within Sample)",
-       x="Sig Scores from GAPDH-normalized Expression",
-       y="Sig Scores from Expression Z-scores") +
-  facet_wrap(~drug_abbrev, labeller = labeller(drug_abbrev = 
-    c("cis" = "Cisplatin",
-      "cyta" = "Cytarabine",
-      "fu" = "5-Fluorouracil",
-      "gem" = "Gemcitabine",
-      "irino" = "Irinotecan",
-      "lum" = "Luminespib",
-      "pac" = "Paclitaxel",
-      "topo" = "Topotecan",
-      "vinb" = "Vinblastine",
-      "vor" = "Vorinostat")))
-ggsave(here("Plots" ,"Data Prep",
-            paste0(length(sigs), "drug_sig_score_correlations.png")),
-       width=8, height=7)
-
-cor.test(comp3$scores_gapdh[which(comp3$drug_abbrev=="cis")],
-         comp3$scores_z[which(comp3$drug_abbrev=="cis")],
-         method = 'spearman')
-cor.test(comp3$scores_gapdh[which(comp3$drug_abbrev=="cyta")],
-         comp3$scores_z[which(comp3$drug_abbrev=="cyta")],
-         method = 'spearman')
-cor.test(comp3$scores_gapdh[which(comp3$drug_abbrev=="fu")],
-         comp3$scores_z[which(comp3$drug_abbrev=="fu")],
-         method = 'spearman')
-cor.test(comp3$scores_gapdh[which(comp3$drug_abbrev=="gem")],
-         comp3$scores_z[which(comp3$drug_abbrev=="gem")],
-         method = 'spearman')
-cor.test(comp3$scores_gapdh[which(comp3$drug_abbrev=="irino")],
-         comp3$scores_z[which(comp3$drug_abbrev=="irino")],
-         method = 'spearman')
-cor.test(comp3$scores_gapdh[which(comp3$drug_abbrev=="lum")],
-         comp3$scores_z[which(comp3$drug_abbrev=="lum")],
-         method = 'spearman')
-cor.test(comp3$scores_gapdh[which(comp3$drug_abbrev=="pac")],
-         comp3$scores_z[which(comp3$drug_abbrev=="pac")],
-         method = 'spearman')
-cor.test(comp3$scores_gapdh[which(comp3$drug_abbrev=="topo")],
-         comp3$scores_z[which(comp3$drug_abbrev=="topo")],
-         method = 'spearman')
-cor.test(comp3$scores_gapdh[which(comp3$drug_abbrev=="vinb")],
-         comp3$scores_z[which(comp3$drug_abbrev=="vinb")],
-         method = 'spearman')
-cor.test(comp3$scores_gapdh[which(comp3$drug_abbrev=="vor")],
-         comp3$scores_z[which(comp3$drug_abbrev=="vor")],
-         method = 'spearman')
+# comp = scores_long %>%
+#   mutate(scores_gapdh = score) %>%
+#   select(-score)
+# 
+# comp2 = scores_long %>%
+#   mutate(scores_z =score) %>%
+#   select(-score)
+# 
+# comp3 = full_join(comp, comp2, by=c("cell_line", "drug_abbrev")) %>%
+#   mutate(subtype=subtype.y) %>%
+#   select(-subtype.x, -subtype.y)
+# 
+# ggplot(comp3, aes(x=scores_gapdh, y=scores_z)) +
+#   geom_point(alpha=0.4) +
+#   scale_y_continuous(limits=c(-1, 1.5), breaks=c(-1, 0, 1)) +
+#   scale_x_continuous(limits=c(0.2,0.6)) +
+#   labs(title = "Signature Scores From Different Expression Normalization Methods",
+#        subtitle = "Normalized to GAPDH vs Z-Score Across All Genes (Within Sample)",
+#        x="Sig Scores from GAPDH-normalized Expression",
+#        y="Sig Scores from Expression Z-scores") +
+#   facet_wrap(~drug_abbrev, labeller = labeller(drug_abbrev = 
+#     c("cis" = "Cisplatin",
+#       "cyta" = "Cytarabine",
+#       "fu" = "5-Fluorouracil",
+#       "gem" = "Gemcitabine",
+#       "irino" = "Irinotecan",
+#       "lum" = "Luminespib",
+#       "pac" = "Paclitaxel",
+#       "topo" = "Topotecan",
+#       "vinb" = "Vinblastine",
+#       "vor" = "Vorinostat")))
+# ggsave(here("Plots" ,"Data Prep",
+#             paste0(length(sigs), "drug_sig_score_correlations.png")),
+#        width=8, height=7)
+# 
+# cor.test(comp3$scores_gapdh[which(comp3$drug_abbrev=="cis")],
+#          comp3$scores_z[which(comp3$drug_abbrev=="cis")],
+#          method = 'spearman')
+# cor.test(comp3$scores_gapdh[which(comp3$drug_abbrev=="cyta")],
+#          comp3$scores_z[which(comp3$drug_abbrev=="cyta")],
+#          method = 'spearman')
+# cor.test(comp3$scores_gapdh[which(comp3$drug_abbrev=="fu")],
+#          comp3$scores_z[which(comp3$drug_abbrev=="fu")],
+#          method = 'spearman')
+# cor.test(comp3$scores_gapdh[which(comp3$drug_abbrev=="gem")],
+#          comp3$scores_z[which(comp3$drug_abbrev=="gem")],
+#          method = 'spearman')
+# cor.test(comp3$scores_gapdh[which(comp3$drug_abbrev=="irino")],
+#          comp3$scores_z[which(comp3$drug_abbrev=="irino")],
+#          method = 'spearman')
+# cor.test(comp3$scores_gapdh[which(comp3$drug_abbrev=="lum")],
+#          comp3$scores_z[which(comp3$drug_abbrev=="lum")],
+#          method = 'spearman')
+# cor.test(comp3$scores_gapdh[which(comp3$drug_abbrev=="pac")],
+#          comp3$scores_z[which(comp3$drug_abbrev=="pac")],
+#          method = 'spearman')
+# cor.test(comp3$scores_gapdh[which(comp3$drug_abbrev=="topo")],
+#          comp3$scores_z[which(comp3$drug_abbrev=="topo")],
+#          method = 'spearman')
+# cor.test(comp3$scores_gapdh[which(comp3$drug_abbrev=="vinb")],
+#          comp3$scores_z[which(comp3$drug_abbrev=="vinb")],
+#          method = 'spearman')
+# cor.test(comp3$scores_gapdh[which(comp3$drug_abbrev=="vor")],
+#          comp3$scores_z[which(comp3$drug_abbrev=="vor")],
+#          method = 'spearman')
 ```
 
 
@@ -658,6 +658,7 @@ subtype_scores = subtype_scores[order(subtype_scores$subtype),]
 #save
 # saveRDS(scored_ranks_full, here("Results", paste0(length(sigs),"sig_accuracy_scores_cleaned.rds")))
 ```
+
 
 ## Boxplot
 
@@ -1076,6 +1077,19 @@ ggsave(here("Plots", "Epithelial Cancers",
             paste0(length(sigs), "sig_score_v_ic50_epi.png")),
        width=15, height=7)
 ```
+
+
+# Comparing cell lines w/i subtypes that perform well/not well
+
+```{r}
+colnames(cell_lines)[2] = "cell_line"
+cell_lines$cell_line = as.character(cell_lines$cell_line)
+h = left_join(scored_ranks, cell_lines, by= "cell_line")
+View(h %>% filter(subtype=="ESCA"))
+```
+
+
+
 
 
 
