@@ -74,7 +74,7 @@ sigs = sigs[c(1,3,4)]
 sig_drugs=sig_drugs[c(1,3,4)]
 ```
 
-#testing the smaller length-optimized sigs
+To test the smaller, length-optimized sigs
 
 ```{r}
 sigs[["cis"]] = c("LRRC8C", "LY6K", "MMP10","SLFN11", "STOML2","USP31","WDR3", "ZNF750")

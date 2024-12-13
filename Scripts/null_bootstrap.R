@@ -635,6 +635,7 @@ for(i in 1:length(cancer_order)){
                     paired=FALSE, alternative="two.sided")
     
     
+    
     all_p$subtype[i] = type
     all_p$p_val[i] = result$p.value
   } else {
