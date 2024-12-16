@@ -436,6 +436,9 @@ ggsave(here("Plots" ,"Data Prep",
 Comparing sig scores bw different expression normalization methods
 
 ```{r}
+#to run this chunk, need to run the code above once using the z-scores and another time using the gapdh-normalized scores.
+#after running one option, run either line 442 or 446 (depending on which norm method matches the label), then run everything again with the other norm method. once both `comp` and `comp2` exist, continue running the rest of this chunk
+
 # comp = scores_long %>%
 #   mutate(scores_gapdh = score) %>%
 #   select(-score)
@@ -693,7 +696,7 @@ p1
 
 ggsave(plot=p1, 
        filename=here("Plots",
-                     paste0(length(sigs), "sig_accuracy_boxplots_gapdh.png")), 
+                     paste0(length(sigs), "sig_accuracy_boxplots.png")), 
        width = 15, height = 9) #save plot
 ```
 
@@ -741,7 +744,7 @@ p2
 
 ggsave(plot=p2, 
        filename=here("Plots", "Epithelial Cancers",
-                     paste0(length(sigs), "sig_accuracy_boxplots_epi_gapdh.png")), 
+                     paste0(length(sigs), "sig_accuracy_boxplots_epi.png")), 
        width = 15, height = 9) #save plot
 
 ```
@@ -833,7 +836,7 @@ ggplot(scores_sup, aes(x=rank)) +
         plot.subtitle = element_text(hjust = 0.5),
         axis.text = element_text(size = 10))
 
-ggsave(here("Plots", paste0(length(sigs), "sig_prediction_freq_gapdh.png")),
+ggsave(here("Plots", paste0(length(sigs), "sig_prediction_freq.png")),
        width=15, height=8)
 ```
 
@@ -862,7 +865,7 @@ ggplot(scores_sup %>% filter(subtype %in% epi), aes(x=rank)) +
         axis.text = element_text(size = 10))
 
 ggsave(here("Plots", "Epithelial Cancers",
-            paste0(length(sigs), "sig_prediction_freq_epi_gapdh.png")),
+            paste0(length(sigs), "sig_prediction_freq_epi.png")),
        width=15, height=8)
 ```
 
@@ -899,7 +902,7 @@ ggplot(surv_sup, aes(x=rank, y=surv, col=rank, fill=rank)) +
         plot.subtitle = element_text(hjust = 0.5),
         axis.text = element_text(size = 10))
 
-ggsave(here("Plots", paste0(length(sigs), "sig_prediction_surv_gapdh.png")),
+ggsave(here("Plots", paste0(length(sigs), "sig_prediction_surv.png")),
        width=15, height=8)
 ```
 
@@ -930,162 +933,8 @@ ggplot(surv_sup %>% filter(subtype %in% epi), aes(x=rank, y=surv, fill=rank, col
         axis.text = element_text(size = 10))
 
 ggsave(here("Plots", "Epithelial Cancers",
-            paste0(length(sigs), "sig_prediction_surv_epi_gapdh.png")),
+            paste0(length(sigs), "sig_prediction_surv_epi.png")),
        width=15, height=8)
-```
-
-
-scatterplot of score vs surv
-
-```{r}
-ggplot(surv_sup, aes(x=score, y=surv)) +
-  geom_point(alpha=0.4, col = "#48705d") +
-  labs(title="Predicted Sensitivity vs. Observed Survival",
-       x="Signature Score", 
-       y="Survival")+
-
-  facet_wrap(~drug_abbrev, 
-             labeller=as_labeller(setNames(sig_drugs, names(sig_labels))),
-             nrow=plot_rows) +
-  
-  theme_bw(base_size = 15) + #theme and sizing
-  theme(axis.text.y = element_text(size = 20),
-        axis.text.x = element_text(size = 20),
-        legend.position = "none",
-        plot.title = element_text(hjust = 0.5),
-        plot.subtitle = element_text(hjust = 0.5),
-        axis.text = element_text(size = 10))
-
-ggsave(here("Plots",
-            paste0(length(sigs), "sig_score_v_surv_gapdh.png")),
-       width=15, height=7)
-```
-
-```{r}
-ggplot(surv_sup %>% filter(subtype %in% epi), aes(x=score, y=surv)) +
-  geom_point(alpha=0.4, col = "#48705d") +
-  labs(title="Predicted Sensitivity vs. Observed Survival",
-       subtitle = "in Epithelial Cancers",
-       x="Signature Score", 
-       y="Survival")+
-
-  facet_wrap(~drug_abbrev, 
-             labeller=as_labeller(setNames(sig_drugs, names(sig_labels))),
-             nrow=plot_rows) +
-  
-  theme_bw(base_size = 15) + #theme and sizing
-  theme(axis.text.y = element_text(size = 20),
-        axis.text.x = element_text(size = 20),
-        legend.position = "none",
-        plot.title = element_text(hjust = 0.5),
-        plot.subtitle = element_text(hjust = 0.5),
-        axis.text = element_text(size = 10))
-
-ggsave(here("Plots", "Epithelial Cancers",
-            paste0(length(sigs), "sig_score_v_surv_epi_gapdh.png")),
-       width=15, height=7)
-```
-
-scatter of rank vs surv
-
-```{r}
-ggplot(surv_sup, aes(x=as.numeric(rank), y=surv)) +
-  geom_point(fill = "#b4cfc3", col = "#48705d", alpha=0.5) +
-  labs(title="Distribution of Survival by Predicted Sensitivity Ranking",
-       x="Sensitivity Ranking", 
-       y="Survival")+
-
-  facet_wrap(~drug_abbrev, 
-             labeller=as_labeller(setNames(sig_drugs, names(sig_labels))),
-             nrow=plot_rows) +
-  stat_summary(fun.data = give.n, geom = "text", fun.y = median,
-                  position = position_dodge(width = 0.75),
-               aes(y=viol_n_displace), size = 5, angle = bar_n_angle) +
-  
-  theme_bw(base_size = 15) + #theme and sizing
-  theme(axis.text.y = element_text(size = 20),
-        axis.text.x = element_text(size = 20),
-        legend.position = "none",
-        plot.title = element_text(hjust = 0.5),
-        plot.subtitle = element_text(hjust = 0.5),
-        axis.text = element_text(size = 10))
-```
-
-
-ic50 vs sig score
-
-```{r}
-fitted_dr = readxl::read_excel(here("Data", "Raw Data", "GDSC2_fitted_dose_response.xlsx")) %>%
-  select(COSMIC_ID, DRUG_NAME, LN_IC50, AUC) %>%
-  filter(DRUG_NAME %in% sig_drugs) %>%
-  mutate(cell_line=as.character(COSMIC_ID))
-
-drug_abbrev_key = data.frame(drug_abbrev=names(sigs), #add drug abbrevs to fitted_dr
-                             DRUG_NAME=sig_drugs)
-fitted_dr = left_join(fitted_dr, drug_abbrev_key,
-                      by="DRUG_NAME")
-
-surv_sup = left_join(surv_sup, fitted_dr, by=c("cell_line", "drug_abbrev")) %>%
-  select(cell_line, subtype, drug_abbrev, score, rank, surv, LN_IC50, AUC)
-```
-
-```{r}
-ggplot(surv_sup, aes(x=score, y=LN_IC50)) +
-  geom_point(alpha=0.4, col = "#48705d") +
-  labs(title="Predicted Sensitivity vs. IC50",
-       x="Signature Score", 
-       y="ln(IC50)")+
-
-  facet_wrap(~drug_abbrev, 
-             labeller=as_labeller(setNames(sig_drugs, names(sig_labels))),
-             nrow=plot_rows) +
-  
-  theme_bw(base_size = 15) + #theme and sizing
-  theme(axis.text.y = element_text(size = 20),
-        axis.text.x = element_text(size = 20),
-        legend.position = "none",
-        plot.title = element_text(hjust = 0.5),
-        plot.subtitle = element_text(hjust = 0.5),
-        axis.text = element_text(size = 10))
-
-ggsave(here("Plots",
-            paste0(length(sigs), "sig_score_v_ic50.png")),
-       width=15, height=7)
-```
-
-```{r}
-ggplot(surv_sup %>% filter(subtype %in% epi), aes(x=score, y=LN_IC50)) +
-  geom_point(alpha=0.4, col = "#48705d") +
-  labs(title="Predicted Sensitivity vs. IC50",
-       subtitle = "in Epithelial Cancers",
-       x="Signature Score", 
-       y="ln(IC50)")+
-
-  facet_wrap(~drug_abbrev, 
-             labeller=as_labeller(setNames(sig_drugs, names(sig_labels))),
-             nrow=plot_rows) +
-  
-  theme_bw(base_size = 15) + #theme and sizing
-  theme(axis.text.y = element_text(size = 20),
-        axis.text.x = element_text(size = 20),
-        legend.position = "none",
-        plot.title = element_text(hjust = 0.5),
-        plot.subtitle = element_text(hjust = 0.5),
-        axis.text = element_text(size = 10))
-
-ggsave(here("Plots", "Epithelial Cancers",
-            paste0(length(sigs), "sig_score_v_ic50_epi.png")),
-       width=15, height=7)
-```
-
-
-# Comparing cell lines w/i subtypes that perform well/not well
-
-```{r}
-colnames(cell_lines)[2] = "cell_line"
-cell_lines$cell_line = as.character(cell_lines$cell_line)
-h = left_join(scored_ranks, cell_lines, by= "cell_line")
-View(h %>% filter(subtype=="ESCA"))
 ```
 
 
@@ -1095,7 +944,7 @@ View(h %>% filter(subtype=="ESCA"))
 
 # Subtype Performance Correlation
 
-correlation bw 10sig and 3 sig rankings performance w/i subtypes
+correlation bw 10sig and 3 sig rankings performance among subtypes
 
 ```{r}
 #all cancers
