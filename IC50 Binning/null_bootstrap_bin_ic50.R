@@ -1,7 +1,6 @@
 # Null Bootstrap
 
 library(here)
-library(plyr) #for match_df to get acc score from rank order
 library(see) #for the half violins
 library(tidyverse)
 
@@ -9,9 +8,6 @@ conflicted::conflict_prefer("here", "here")
 conflicted::conflict_prefer("filter", "dplyr")
 conflicted::conflict_prefer("mutate", "dplyr")
 conflicted::conflict_prefer("select", "dplyr")
-
-#if running in the cluster, uncomment this
-# n_sigs = args[1]
 
 #if running locally, use this
 n_sigs = 10
@@ -37,29 +33,14 @@ if(n_sigs == 3){
 
 
 
-# Load and Prep Score Table
-#this can be generated from `chemogram_pipeline.Rmd` under the "Score Accuracy" section
-acc_scores = readRDS(here("Results", paste0(length(sigs),"sig_score_table.rds")))
-
-
 # Load Expression Data
 exprs_norm = readRDS(here("Data", "normalized_exprs.rds"))
 
 
 # Load Chemogram Results
-fit_results = readRDS(here("Results",
-                           paste0(length(sigs), "sig_nlme_fitted_data.rds")))
+ranks = readRDS(here("Results", "bin_ic50_ranks.rds"))
 
-scored_ranks = readRDS(here("Results", 
-                            paste0(length(sigs),"sig_accuracy_scores.rds"))) %>%
-  mutate(s_score = accuracy) %>%
-  select(-accuracy)
-
-chemogram_results = na.omit(left_join(fit_results, scored_ranks, by="cell_line"))
-unique(chemogram_results$subtype.x==chemogram_results$subtype.y) #double check this is true
-chemogram_results = chemogram_results %>%
-  mutate(subtype=subtype.x) %>%
-  select(-subtype.x, -subtype.y)
+sig_results = readRDS(here("Results", "bin_ic50_results.rds"))
 
 
 
@@ -90,14 +71,10 @@ calc_sig_score = function(cl_surv, exprs, null_sigs){
   #loop through all cell lines in `survivals_full`
   cl = unique(cl_surv$cell_line)
   #initialize column to store null sig scores
-  cl_surv = cl_surv %>% select(-s_score) #just using this df as a structural base, dont need this info
+  cl_surv = cl_surv %>% #just using this df as a structural base, dont need this info
+    select(-rank, -dif, -abs_dif)
   cl_surv$n_score=NA #initialize a column to store null sig scores in
-  cl_surv = do.call("rbind", replicate(length(null_sigs), #rep. all rows for the number of drugs we have
-                                       cl_surv, simplify = FALSE)) 
-  cl_surv = cl_surv[order(cl_surv$cell_line),]
-  cl_surv$drug = rep(names(null_sigs), length(unique(cl_surv$cell_line)))
-  
-  
+
   
   #isolate row for the cell line
   for(j in 1:length(cl)){
@@ -114,7 +91,7 @@ calc_sig_score = function(cl_surv, exprs, null_sigs){
           
           #calc sig score (median of expression z-score)
           cl_surv$n_score[(cl_surv$cell_line==cl[j] & 
-                             cl_surv$drug==names(null_sigs)[k])] = as.numeric(apply(exprs_sig_subset, 1, median))
+                             cl_surv$drug_abbrev==names(null_sigs)[k])] = as.numeric(apply(exprs_sig_subset, 1, median))
         }#repeat for all 10 sigs
       } else {
         for(k in 1:length(null_sigs)){
@@ -129,53 +106,50 @@ calc_sig_score = function(cl_surv, exprs, null_sigs){
                            cl_surv$drug==names(null_sigs)[k])] = NA
       }
     }
-    
-    
-    
+  
   }#repeat for all cell lines
   return(cl_surv)
 }
 
 
 ### Calculate Accuracy Score
-calc_acc_score = function(n_scores, acc_scores, acc_results){
+calc_acc_score = function(n_scores, run_num){
   #initialize the column to store accuracy of null-sig chemogram
-  colnames(acc_results)[which(colnames(acc_results)=="s_score")] = "s_accuracy"
-  colnames(acc_results)[which(colnames(acc_results)=="drug_abbrev")] = "drug"
-  acc_results$n_accuracy = NA
-  
   n_scores = na.omit(n_scores)
-  n_scores = left_join(n_scores, 
-                       acc_results%>%select(cell_line, drug, surv),
-                       by=c("cell_line", "drug"))
+  n_scores$n_rank = NA
   
+  cl = unique(n_scores$cell_line)
+  results = data.frame(matrix(nrow=length(cl),
+                              ncol=5))
+  colnames(results) = c("cell_line", "subtype", 
+                        "av_dif", "av_abs_dif",
+                        "run")
   
   #loop through 1 cell line at a time and subset data for each per loop iteration
-  cl = unique(n_scores$cell_line)
   for(j in 1:length(cl)){
     n_scores_subset = n_scores %>% filter(cell_line==cl[j])
     
-    #set DF in order of highest to lowest null score
+    #set DF in order of highest to lowest null sig score
     n_scores_subset = n_scores_subset[order(n_scores_subset$n_score, decreasing=TRUE),]
     
     #make column of n_rank and number from 1:10
     n_scores_subset$n_rank = seq(1:length(sigs))
     
-    #set the DF in order of lowest to highest survival
-    n_scores_subset = n_scores_subset[order(n_scores_subset$surv, decreasing=FALSE),]
+    #score
+    n_scores_subset = n_scores_subset %>%
+      mutate(dif = ntile-n_rank,
+             abs_dif = abs(ntile-n_rank))
     
-    #store the new order of n_rank in a vector
-    n_rank = as.data.frame(t(n_scores_subset$n_rank))
-    
-    #compare it to the acc_score matrix and retrieve the associated accuracy score
-    n_score = suppressMessages(inner_join(acc_scores, n_rank)) %>%
-      select(score)
-    
-    #store the acc score in a DF with cell line, cancer subtype, and n_acc
-    acc_results$n_accuracy[acc_results$cell_line==cl[j]] = n_score
+    #store results
+    results$cell_line[j] = cl[j]
+    results$subtype[j] = unique(n_scores_subset$subtype)
+    results$av_dif[j] = mean(n_scores_subset$dif)
+    results$av_abs_dif[j] = mean(n_scores_subset$abs_dif)
     
   }#reiterate for each cell line
-  return(acc_results)
+  results$run = run_num
+  
+  return(results)
 }
 
 
@@ -189,7 +163,7 @@ sig_bootstrap = function(n, i, sigs, exprs, cl_surv, acc_results, acc_scores){
   n_sig_scores = calc_sig_score(cl_surv, exprs, null_sigs)
   
   print(paste("Calculating null accuracy scores for run", i))
-  scored_boot = calc_acc_score(n_scores=n_sig_scores, acc_scores, acc_results)
+  scored_boot = calc_acc_score(n_scores=n_sig_scores, run_num=i)
   
   return(scored_boot)
 }
@@ -207,26 +181,18 @@ for(i in 1:n){
     boot_results = sig_bootstrap(n, i,
                                  sigs=sigs,
                                  exprs=exprs_norm,
-                                 cl_surv=scored_ranks,
-                                 acc_results=chemogram_results,
-                                 acc_scores=acc_scores)
-    boot_results_full = boot_results[!grepl("NA", boot_results$n_accuracy),]
-    boot_results_full$run = i
-    
-    boot_results_all = boot_results_full
+                                 cl_surv=ranks)
+
+    boot_results_all = boot_results
   } else {
     boot_results = sig_bootstrap(n, i,
                                  sigs=sigs,
                                  exprs=exprs_norm,
-                                 cl_surv=scored_ranks,
-                                 acc_results=chemogram_results,
-                                 acc_scores=acc_scores)
-    boot_results_full = boot_results[!grepl("NA", boot_results$n_accuracy),]
-    boot_results_full$run = i
-    
-    boot_results_all = rbind(boot_results_all, boot_results_full)
+                                 cl_surv=ranks)
+
+    boot_results_all = rbind(boot_results_all, boot_results)
   }
-  rm(boot_results, boot_results_full)
+  rm(boot_results)
 } #next iteration, i of n
 
 
@@ -236,18 +202,19 @@ for(i in 1:n){
 subtype_vec = unique(boot_results_all$subtype)
 
 boot_subtype_scores = data.frame(matrix(ncol=4, nrow=(n)))
-colnames(boot_subtype_scores) = c("subtype", "n_accuracy", "s_accuracy", "run")
+colnames(boot_subtype_scores) = c("subtype", "av_dif", "av_abs_dif", "run")
 
 for(i in 1:length(subtype_vec)){ #go through each subtype
-  result_subset = boot_results_all %>%
+  boot_subset = boot_results_all %>%
     filter(subtype==as.character(subtype_vec[i]))
+  
   for(j in 1:n){ #go through each bootstrap run
-    result_subset_run = result_subset %>%
+    boot_subset_subset_run = boot_subset %>%
       filter(run==j)
     boot_subtype_scores$subtype[j] = as.character(subtype_vec[i])
     boot_subtype_scores$run[j] = j
-    boot_subtype_scores$n_accuracy[j] = mean(as.numeric(result_subset_run$n_accuracy))
-    boot_subtype_scores$s_accuracy[j] = mean(result_subset_run$s_accuracy)
+    boot_subtype_scores$av_dif[j] = mean(boot_subset_subset_run$av_dif)
+    boot_subtype_scores$av_abs_dif[j] = mean(boot_subset_subset_run$av_abs_dif)
   }
   if(i==1){
     boot_subtype_results = boot_subtype_scores
@@ -256,54 +223,44 @@ for(i in 1:length(subtype_vec)){ #go through each subtype
   }
 }
 
-rm(result_subset, result_subset_run, boot_subtype_scores)
+rm(boot_subset, boot_subset_subset_run, boot_subtype_scores)
 
 
-saveRDS(boot_results_all, here("Results", paste0("null_", n, "_bootstrap_", 
+saveRDS(boot_results_all, here("Results", paste0("null_", n, "_binic50_bootstrap_", 
                                                  length(sigs), "sig_indiv_scores.rds")))
 
-saveRDS(boot_subtype_results, here("Results", paste0("null_", n, "_bootstrap_", 
+saveRDS(boot_subtype_results, here("Results", paste0("null_", n, "_binic50_bootstrap_", 
                                                      length(sigs), "sig_subtype_scores.rds")))
 
 
 #reload bootstrap data
-boot_results_all = readRDS(here("Results", paste0("null_", n, "_bootstrap_", 
+boot_results_all = readRDS(here("Results", paste0("null_", n, "_binic50_bootstrap_", 
                                                   length(sigs), "sig_indiv_scores.rds")))
-boot_subtype_results = readRDS(here("Results", paste0("null_", n, "_bootstrap_", 
+boot_subtype_results = readRDS(here("Results", paste0("null_", n, "_binic50_bootstrap_", 
                                                       length(sigs), "sig_subtype_scores.rds")))
 
 
 
 ################################################################################
 # Reformat Chemogram Data
-#create a new df with one row per subtype, and columns = subtype, proportion_correct
-subtype = unique(scored_ranks$subtype)
-subtype_scores = data.frame(subtype=subtype, accuracy=0, n = 0)
+#calculate score averages per subtype
+subtype_scores = data.frame(matrix(ncol=3, nrow=(length(unique(sig_results$subtype)))))
+colnames(subtype_scores) = c("subtype", "av_dif", "av_abs_dif")
+subtype_vec = unique(sig_results$subtype)
 
-for (i in 1:length(subtype)){
-  #Subset data per subtype
-  subset = na.omit(scored_ranks[which(scored_ranks$subtype == subtype[i]),])
-  
-  #Store subtype name
-  subtype_scores$subtype[i] = subtype[i]
-  
-  #calc and store % of cell line survivals correctly predicted
-  subtype_scores$accuracy[i] = round((sum(subset$s_score)/nrow(subset)), digits=3)
-  
-  #Indicate number of cell lines in subtype (n)
-  subtype_scores$n[i] = nrow(subset)
+for(i in 1:length(subtype_vec)){
+  sig_subset = sig_results %>%
+    filter(subtype==as.character(subtype_vec[i]))
+  subtype_scores$subtype[i] = as.character(subtype_vec[i])
+  subtype_scores$av_dif[i] = mean(sig_subset$av_dif)
+  subtype_scores$av_abs_dif[i] = mean(sig_subset$av_abs_dif)
 }
-rm(subset)
+rm(sig_subset, subtype_vec)
 
-#remove unclassified cell lines
-chemogram_results = chemogram_results %>% filter(subtype != "UNCLASSIFIED") #-131
-scored_ranks = na.omit(scored_ranks) %>% filter(subtype != "UNCLASSIFIED") #0
-boot_results_all = boot_results_all %>% filter(subtype != "UNCLASSIFIED") #-130
-boot_subtype_results = boot_subtype_results %>% filter(subtype != "UNCLASSIFIED")
-subtype_scores = subtype_scores %>% filter(subtype != "UNCLASSIFIED")
+
 
 #order the rows by highest to lowest correct
-subtype_scores = subtype_scores[order(subtype_scores$accuracy),]
+subtype_scores = subtype_scores[order(subtype_scores$av_abs_dif),]
 
 #To maintain this order when we plot later, factorize the column
 subtype_scores$subtype <- factor(subtype_scores$subtype,
@@ -314,17 +271,12 @@ subtype_scores$subtype <- factor(subtype_scores$subtype,
 #Set order to = subtype_scores
 cancer_order = (as.character(subtype_scores$subtype))
 
-scored_ranks$subtype <- factor(scored_ranks$subtype,
+sig_results$subtype <- factor(sig_results$subtype,
                                ordered = TRUE,
                                levels = c(cancer_order))
-scored_ranks = scored_ranks[order(scored_ranks$subtype),]
+sig_results = sig_results[order(sig_results$subtype),]
 
 #reorder cancer types
-subtype_scores$subtype <- factor(subtype_scores$subtype,
-                                 ordered = TRUE,
-                                 levels = c(cancer_order))
-subtype_scores = subtype_scores[order(subtype_scores$subtype),]
-
 boot_results_all$subtype <- factor(boot_results_all$subtype,
                                    ordered = TRUE,
                                    levels = cancer_order)
@@ -343,12 +295,12 @@ boot_subtype_results = boot_subtype_results[order(boot_subtype_results$subtype),
 ## Reformat Data
 half_box_data = boot_results_all %>% #label all the null results
   mutate(`Prediction Method`="Random Signatures") %>%
-  mutate(accuracy = n_accuracy) %>%
-  select(-run, -s_accuracy, -n_accuracy, -surv, -drug)
-half_box_data_temp = scored_ranks %>%
+  mutate(accuracy = av_abs_dif) %>%
+  select(-run, -av_dif, -av_abs_dif)
+half_box_data_temp = sig_results %>%
   mutate(`Prediction Method`=paste0(length(sigs), "-sig Chemogram"),
-         accuracy = s_score) %>%
-  select(-s_score)
+         accuracy = av_abs_dif) %>%
+  select(-av_dif, -av_abs_dif)
 half_box_data = rbind(half_box_data, half_box_data_temp)
 rm(half_box_data_temp)
 
@@ -360,6 +312,9 @@ half_box_data$accuracy = as.numeric(half_box_data$accuracy)
 
 
 ## Plot Half-boxplot beeswarms
+ggplot(half_box_data, aes(x=subtype, y=accuracy, col=`Prediction Method`))+
+  geom_boxplot()
+
 ggplot(data=half_box_data, aes(x=subtype, y=accuracy)) +
   
   geom_boxplot(width=0.6, aes(fill=`Prediction Method`, col=`Prediction Method`), alpha=0.8, fatten=NULL) +
@@ -378,7 +333,7 @@ ggplot(data=half_box_data, aes(x=subtype, y=accuracy)) +
   scale_x_discrete(limits = cancer_order) +
   
   labs(title = paste0("Predictive Accuracy of Random Signatures vs ",length(sigs),"-sig Chemogram"), #titles and axis labels
-       subtitle = paste0(length(unique(half_box_data$cell_line))," Cell Lines, ", n, " Bootstrap Iterations"),
+       subtitle = paste0(nrow(sig_results)," Cell Lines, ", n, " Bootstrap Iterations"),
        y = "Predictive Accuracy", x = "Disease Site") +
   theme_bw(base_size = 15) + #theme and sizing
   theme(axis.text.y = element_text(size = 20),
@@ -404,7 +359,7 @@ plot_real$`Prediction Method` = paste0(length(sigs), "-sig Chemogram")
 colnames(plot_real)[1] = "Predictive Accuracy"
 
 #t.test b/w null and real
-p=wilcox.test(plot_null$`Predictive Accuracy`, plot_real$`Predictive Accuracy`)
+p=t.test(plot_null$`Predictive Accuracy`, plot_real$`Predictive Accuracy`)
 
 ##Plot
 ggplot(plot_null, aes(x=`Prediction Method`, y=`Predictive Accuracy`)) +
@@ -423,10 +378,10 @@ ggplot(plot_null, aes(x=`Prediction Method`, y=`Predictive Accuracy`)) +
                width = 0.15, size = 1, linetype = "solid",
                position=position_dodge(preserve="total")) +
   
-  annotate("text", x = 1.5, y = 1.05, label = paste0("Wilcoxon test: p = ", round(p[["p.value"]], 6)), size = 5) +
+  annotate("text", x = 1.5, y = 1.05, label = paste0("t-test: p = ", round(p[["p.value"]], 6)), size = 5) +
   
   labs(title = paste0("Predictive Accuracy of Random Signatures vs ", length(sigs), "-sig Chemogram"), #titles and axis labels
-       subtitle = paste0(length(unique(chemogram_results$cell_line))," Cell Lines, ", n, " Bootstrap Iterations"),
+       subtitle = paste0(nrow(scored_ranks)," Cell Lines, ", n, " Bootstrap Iterations"),
        y = "Predictive Accuracy", x = "Prediction Method") +
   
   theme_bw(base_size = 15) + #theme and sizing
@@ -456,7 +411,7 @@ ggplot(data=boot_subtype_results, aes(x=subtype, y=n_accuracy)) +
   #coord_flip() +
   scale_y_continuous(limits=c(0,1), breaks = c(0,0.25,.5,.75,1))+
   labs(title = paste0("Predictive Accuracy of Random Signatures vs ",length(sigs),"-sig Chemogram"), #titles and axis labels
-       subtitle = paste0(length(unique(chemogram_results$cell_line))," Cell Lines, ", n, " Bootstrap Iterations"),
+       subtitle = paste0(nrow(scored_ranks)," Cell Lines, ", n, " Bootstrap Iterations"),
        y = "Average Predictive Accuracy", x = "Disease Site") +
   
   theme_bw(base_size = 15) + #theme and sizing
@@ -523,7 +478,7 @@ ggplot(data=half_box_data_epi, aes(x=subtype, y=accuracy)) +
   scale_x_discrete(limits = cancer_order_epi) +
   
   labs(title = paste0("Predictive Accuracy of Random Signatures vs ",length(sigs),"-sig Chemogram"), #titles and axis labels
-       subtitle = paste0(length(unique(half_box_data_epi$cell_line))," Epithelial Cell Lines, ", n, " Bootstrap Iterations"),
+       subtitle = paste0(nrow(scored_ranks_full_epi)," Epithelial Cell Lines, ", n, " Bootstrap Iterations"),
        y = "Predictive Accuracy", x = "Disease Site") +
   theme_bw(base_size = 15) + #theme and sizing
   theme(axis.text.y = element_text(size = 20),
@@ -551,7 +506,7 @@ plot_real_epi$`Prediction Method` = "10-sig Chemogram"
 colnames(plot_real_epi)[1] = "Predictive Accuracy"
 
 #t.test b/w null and real
-p_epi = wilcox.test(plot_null_epi$`Predictive Accuracy`, plot_real_epi$`Predictive Accuracy`)
+p_epi = t.test(plot_null_epi$`Predictive Accuracy`, plot_real_epi$`Predictive Accuracy`)
 
 
 ##Plot
@@ -571,7 +526,7 @@ ggplot(plot_null_epi, aes(x=`Prediction Method`, y=`Predictive Accuracy`)) +
                width = 0.15, size = 1, linetype = "solid",
                position=position_dodge(preserve="total")) +
   
-  annotate("text", x = 1.5, y = 1, label = paste0("Wilcoxon test: p = ", round(p_epi[["p.value"]], 9)), size = 5) +
+  annotate("text", x = 1.5, y = 1, label = paste0("t-test: p = ", round(p_epi[["p.value"]], 6)), size = 5) +
   
   labs(title = paste0("Predictive Accuracy of Random Signatures vs ",length(sigs),"-sig Chemogram"), #titles and axis labels
        subtitle = paste0(nrow(scored_ranks_full_epi)," Epithelial Cell Lines, ", n, " Bootstrap Iterations"),
@@ -630,10 +585,9 @@ class(boot_results_all$n_accuracy) = "numeric"
 for(i in 1:length(cancer_order)){
   type = cancer_order[i]
   if(nrow(boot_results_all %>% filter(subtype == type)) > 1 & nrow(scored_ranks %>% filter(subtype == type)) > 1){
-    result = wilcox.test(x=as.matrix(boot_results_all[which(boot_results_all$subtype==type), "n_accuracy"]),
-                    y=as.matrix(scored_ranks[which(scored_ranks$subtype==type), "s_score"]),
+    result = t.test(x=(boot_results_all[which(boot_results_all$subtype==type), "n_accuracy"]),
+                    y=(scored_ranks[which(scored_ranks$subtype==type), "s_score"]),
                     paired=FALSE, alternative="two.sided")
-    
     
     
     all_p$subtype[i] = type
@@ -645,34 +599,13 @@ for(i in 1:length(cancer_order)){
   
 }
 
-#label if subtype is epithelial origin or not
 all_p = all_p %>%
-  mutate(class = case_when(subtype %in% epi ~ "epi", 
+  mutate(class = case_when(subtype %in% epi ~ "epi",
                            TRUE ~ "non-epi"))
-#add number of cell lines in each subtype
-all_p = merge(all_p, subtype_scores[,c(1,3)], by="subtype")
-#add if results are statistically significant +- bonferroni-adjusted alpha = 0.05
-all_p = all_p %>%
-  mutate(standard_signif = case_when(p_val <= 0.05 ~ TRUE,
-                                     TRUE~FALSE),
-         p_adj = p.adjust(p_val, method = "fdr"), #calculate adjusted pval using fdr
-         fdr_signif = case_when(p_adj <= 0.05 ~ TRUE, #determine if padj is significant or not
-                                       TRUE ~ FALSE),
-         bonferroni_signif = case_when(p_val <= 0.05/n ~ TRUE, #determine if pval is significant or not using bonferroni correction
-                                    TRUE ~ FALSE),)
-
-#organize by decreasing significance
 all_p = all_p[order(all_p$p_val, decreasing=FALSE),]
-#reorder columns
-all_p = all_p %>%
-  select(subtype, class, n, 
-         p_val, p_adj, 
-         standard_signif, fdr_signif, bonferroni_signif)
 
-#filter epithelial results
 epi_p = all_p %>% filter(subtype %in% epi)
 
-#save results
-readr::write_csv(all_p, here("Results",
+write_excel_csv(all_p, here("Results",
                             paste0("null", n, "_",
-                              length(sigs), "_pvals.csv")))
+                                   length(sigs), "_pvals.xlsx")))
