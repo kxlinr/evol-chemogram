@@ -6,3 +6,8 @@ Data/normalized_exprs.rds
 *.DS_Store
 Data/normalized_exprs_to_gapdh.rds
 Scripts/10sig_cluster.R
+Plots/Epithelial Cancers/other_3sig_chemogram_epi.png
+Plots/Epithelial Cancers/other_3sig_correlation.png
+Plots/other_3sig_chemogram.png
+Plots/other_3sig_correlation.png
+Scripts/chemogram_other_sigs.Rmd
