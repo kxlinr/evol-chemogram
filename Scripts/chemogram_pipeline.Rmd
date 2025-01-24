@@ -336,7 +336,7 @@ scores = list()
 
 for(i in 1:length(sigs)){
   scores[[i]] = sig_score(sig_genes=sigs[[i]],
-                          exprs=exprs_norm_all,
+                          exprs=exprs_norm,
                           drug_abbrev=names(sigs)[i])
   names(scores)[i] = names(sigs)[i]
 }
