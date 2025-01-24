@@ -327,11 +327,7 @@ sig_score = function(sig_genes, exprs, drug_abbrev){
 The above function is now run for each of the signatures.
 
 ```{r sig_score}
-#rm "DATA." before each cosmic id
-exprs_norm = exprs_norm %>%
-  mutate(COSMIC_ID = substr(COSMIC_ID, 6, nchar(COSMIC_ID)))
-
-# #Run the above function for each sig
+#Run the above function for each sig
 scores = list()
 
 for(i in 1:length(sigs)){
