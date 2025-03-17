@@ -95,7 +95,7 @@ We will use the non-linear mixed-effects model to fit the dose response curves f
 prep_dose_resp <- setConcsForNlme(norm_dose_resp)
 nlme_data <- prepNlmeData(prep_dose_resp, "COSMIC_ID")
 
-rm(norm_dose_resp, prep_dose_resp, raw_dose_resp) #cleanup
+rm(norm_dose_resp, prep_dose_resp) #cleanup
 ```
 
 Include only the drugs we will use in the chemogram.
@@ -119,10 +119,12 @@ fit_nlme = function(data, drug, drug_abbrev){
   data_filt = data %>%
     filter(DRUG_ID_lib==drug_id)
   
-  #fit the model
+  #fit the model (https://rdrr.io/github/CancerRxGene/gdscIC50/src/R/nlme_fit_stats.R)
   model = fitModelNlmeData(data_filt, isLargeData = F)
-  stats = calcNlmeStats(model, data_filt) %>%
-    mutate(cell_line=as.character(CL))
+  stats = calcNlmeStats(model, data_filt) %>% #this returns ln(IC50) & AUC
+    mutate(cell_line=as.character(CL),
+           LN_IC50 = IC50,
+           IC50 = exp(IC50))
   stats = left_join(stats, subtype_key, by="cell_line") #add subtype labels per cl
   
   #find median ic50s
@@ -169,7 +171,7 @@ fit_nlme = function(data, drug, drug_abbrev){
     return(x)
   }
   l3_model2 <- function(lx, maxc, xmid, scal){
-    x <- getXfromConc(exp(lx), maxc)
+    x <- getXfromConc(lx, maxc)
   #     yhat <- 1/(1 + exp(1) ^ ((x - xmid) / scal))
     yhat <- 1 - logist3(x, xmid, scal)
     return(yhat)
@@ -194,21 +196,30 @@ fit_nlme = function(data, drug, drug_abbrev){
   #plot auc dist
   ggplot(stats, aes(x=auc)) +
     geom_histogram(bins=32) +
-    labs(title = paste0("AUC Distribution for ", drug))
+    labs(title = paste0("AUC Distribution for ", drug)) +
+    theme(axis.text= element_text(size=15),
+          axis.title= element_text(size=15),
+          title=element_text(size=15))
   ggsave(here("Plots", "Data Prep",
               paste0(drug_abbrev, "_auc_dist.png")),
-         width=8, height=8)
+         width=7, height=7)
   
   #plot ic50 dist + standard doses
-   ggplot(stats, aes(x=IC50)) +
+   ggplot(stats, aes(x=LN_IC50)) +
     geom_histogram(bins=32) +
      # geom_vline(xintercept=subtype_doses$std_dose[1:nrow(subtype_doses)]) +
-     geom_vline(xintercept=stats$dose, alpha=0.7) +
-     scale_x_continuous(trans="log10") +
-    labs(title = paste0("IC50 Distribution for ", drug))
+     geom_vline(xintercept=log(stats$dose), alpha=0.7) +
+     # scale_x_continuous(trans="log") +
+    labs(title = paste0("IC50 Distribution for ", drug),
+         x="ln(IC50)") +
+    theme(axis.text= element_text(size=15),
+          axis.title= element_text(size=15),
+          title=element_text(size=15))
   ggsave(here("Plots", "Data Prep",
               paste0(drug_abbrev, "_ic50_dist.png")),
-         width=8, height=8)
+         width=7, height=7)
+
+
   
   stats$drug_abbrev = drug_abbrev #add in the drug abbreviation for the whole df
   
