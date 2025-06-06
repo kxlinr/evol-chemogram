@@ -1,0 +1,283 @@
+---
+title: "Method Comparison"
+author: "Kristi Lin-Rahardja"
+date: "2025-06-06"
+output: html_document
+---
+
+# Load Packages
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+# devtools::install_git("https://github.com/HuangLabUMN/oncoPredict")
+```
+
+
+```{r}
+library(here)
+library(oncoPredict)
+library(tidyverse)
+
+set.seed(323)
+```
+
+# Load Our Data
+
+```{r}
+sig_drugs = c("Cisplatin", "Cytarabine", "5-Fluorouracil", "Gemcitabine", "Irinotecan",
+              "Luminespib", "Paclitaxel", "Topotecan", "Vinblastine", "Vorinostat")
+cell_lines = readRDS(here("Data", "cleaned_cell_line_meta.rds"))
+subtype_key = readRDS(here("Data", "subtype_key.rds"))
+exprs_norm = readRDS(here("Data", "normalized_exprs.rds"))
+fit_results = readRDS(here("Results",
+             paste0(length(sig_drugs), "sig_nlme_fitted_data.rds"))) %>%
+  mutate(drug = case_when(drug_abbrev=="cis" ~ "Cisplatin",
+                          drug_abbrev=="cyta" ~ "Cytarabine",
+                          drug_abbrev=="fu" ~ "5-Fluorouracil",
+                          drug_abbrev=="gem" ~ "Gemcitabine",
+                          drug_abbrev=="irino" ~ "Irinotecan",
+                          drug_abbrev=="lum" ~ "Luminespib",
+                          drug_abbrev=="pac" ~ "Paclitaxel",
+                          drug_abbrev=="topo" ~ "Topotecan",
+                          drug_abbrev=="vinb" ~ "Vinblastine",
+                          drug_abbrev=="vor" ~ "Vorinostat"))
+
+acc_scores = readRDS(here("Results", paste0(length(sig_drugs),"sig_score_table.rds")))
+```
+
+```{r}
+scored_ranks_full = readRDS(here("Results", paste0(length(sig_drugs),"sig_accuracy_scores_cleaned.rds")))
+
+#create a new df with one row per subtype, and columns = subtype, proportion_correct
+subtype = unique(scored_ranks_full$subtype)
+subtype_scores = data.frame(subtype=subtype, accuracy=0, n = 0)
+
+for (i in 1:length(subtype)){
+    #Subset data per subtype
+    subset = scored_ranks_full[which(scored_ranks_full$subtype == subtype[i]),]
+    
+    #Store subtype name
+    subtype_scores$subtype[i] = subtype[i]
+    
+    #calc and store % of cell line survivals correctly predicted
+    subtype_scores$accuracy[i] = round((sum(subset$accuracy)/nrow(subset)), digits=3)
+    
+    #Indicate number of cell lines in subtype (n)
+    subtype_scores$n[i] = nrow(subset)
+}
+
+
+#order the rows by highest to lowest correct
+subtype_scores = subtype_scores[order(subtype_scores$accuracy),]
+
+#To maintain this order when we plot later, factorize the column
+subtype_scores$subtype <- factor(subtype_scores$subtype,
+                                      ordered = TRUE,
+                                      levels = subtype_scores$subtype)
+
+
+
+#remove unclassified cell lines
+scored_ranks_full = scored_ranks_full %>% filter(subtype != "UNCLASSIFIED")
+
+#Set order to = subtype_scores
+cancer_order = (as.character(subtype_scores$subtype))[-c(which(as.character(subtype_scores$subtype)=="UNCLASSIFIED"))]
+
+scored_ranks_full$subtype <- factor(scored_ranks_full$subtype, 
+                                      ordered = TRUE, 
+                                      levels = c(cancer_order))
+scored_ranks_full = scored_ranks_full[order(scored_ranks_full$subtype),]
+
+#remove unclassified from subtype score averages
+subtype_scores$subtype <- factor(subtype_scores$subtype, 
+                                      ordered = TRUE, 
+                                      levels = c(cancer_order))
+subtype_scores = subtype_scores[order(subtype_scores$subtype),]
+rm(subset, cancer_order)
+```
+
+
+
+# OncoPredict
+
+## Run Method
+
+Most of this code is pulled directly from the calcPhenotype.Rmd vignette provided by the authors on GitHub. The training data are downloaded directly from the GitHub repository.
+
+```{r}
+#Read GDSC2 response data. rownames() are samples, colnames() are drugs. 
+trainingPtype = readRDS(file = here("Data", "Method Comparison Data","GDSC2_Res.rds"))
+#keep only the same drugs we used in our chemogram
+drug_prefixes = sub("_.*", "", colnames(trainingPtype))
+keep_cols = drug_prefixes %in% sig_drugs
+trainingPtype = trainingPtype[, keep_cols]
+#convert from ln(IC50) to IC50
+trainingPtype<-exp(trainingPtype) 
+
+#Read GDSC expression data for training.
+trainingExprData=readRDS(file=here("Data", "Method Comparison Data", 'GDSC2_Expr_short.rds'))
+
+#Load in the normalized GDSC expression data that we used in our method.
+#This should be the same, but just in case its not exactly, we'll load in our version for consistency.
+testExprData = t(exprs_norm)
+colnames(testExprData) = testExprData[1,] #make the COSMIC id's the column names
+testExprData = testExprData[-1,]
+class(testExprData) = "numeric"
+
+# Run the method
+#Set parameters using the same ones as the vignette (except Rsq, since we're using the same training/testing data)
+op_results = calcPhenotype(trainingExprData=trainingExprData,
+                           trainingPtype=trainingPtype,
+                           testExprData=testExprData,
+                           batchCorrect="eb",
+                           powerTransformPhenotype=TRUE,
+                           removeLowVaryingGenes=0.2,
+                           minNumSamples=10,
+                           selection=1,
+                           printOutput=TRUE,
+                           pcr=FALSE,
+                           removeLowVaringGenesFrom="homogenizeData",
+                           report_pc=FALSE,
+                           cc=FALSE,
+                           percent=80,
+                           rsq=TRUE,
+                           folder=FALSE)
+#the R-squareds for each drug are kinda all over, which is fine. 
+#it would be a problem if they were all 1, meaning that all 
+#the models were overfit bc the training and testing data were the same.
+rm(testExprData, trainingExprData, trainingPtype, keep_cols, drug_prefixes)
+```
+
+## Format and Compare to Chemogram
+
+The output of oncoPredict contains imputed IC50s, which aren't comparable between different drugs. To account for this, we'll convert these values to z-scores across all samples and per drug.
+
+```{r}
+#convert to z-scores
+op_norm = scale(op_results, center=TRUE)
+```
+
+From here, we will calculate accuracy the same way we did for our own method and rank based on the IC50 z-scores per cell line. 
+Unlike our ranking system where a high score predicts high sensitivity, the opposite would be true here. 
+The drug with the *lowest z-score* is the drug we predict the cell line will be most sensitive to (rank = 1).
+The drug with the *highest z-score* is what we'll predict the cell line to be most resistant to (rank = 10).
+
+```{r}
+find_op_score = function(data, cl){
+
+  data = as.data.frame(t(data))
+  #subset data and combine predictions and actual drug response
+  surv_subset = fit_results %>% filter(cell_line==cl)
+  
+  subset = data %>% 
+    select(cl) %>% #filter to just one cl at a time
+    mutate(drug = sub("_.*", "", rownames(data)))
+  colnames(subset) = c("pred", "drug")
+  subset = full_join(subset, surv_subset, by="drug")
+  
+  #rank the predictions
+  subset = subset[order(subset$pred, decreasing = FALSE),] #put drugs in order of increasing IC50 zscore (most sens to most res)
+  subset$pred_rank = (seq(1, 10)) #label the observed sensitivity rank
+  
+  #rank the true response
+  subset = subset[order(subset$surv, decreasing = FALSE),] #put drugs in order from most response to least response
+
+  score = plyr::match_df(acc_scores, as.data.frame(t(subset$pred_rank))) #find which score goes with the prediction ranking
+  score=as.numeric(score$score)
+
+  return(score)
+}
+```
+
+```{r}
+#keep only the cell lines that we have measured survival for AND predictions for
+cl_vec = unique(fit_results$cell_line)
+cl_vec = intersect(cl_vec, rownames(op_norm))
+op_norm = op_norm[cl_vec,]
+
+#df to store results in
+op_acc = data.frame(cell_line=character(),
+                    subtype=character(),
+                    acc_score=numeric()
+                    )
+for(c in 1:length(cl_vec)){
+  print(paste0((c/length(cl_vec))*100, "%"))
+  op_acc = rbind(op_acc, data.frame(
+    cell_line = cl_vec[c],
+    subtype = unique(fit_results%>%
+                       filter(cell_line==cl_vec[c])%>%
+                       select(subtype))[[1]],
+    acc_score = find_op_score(op_norm, cl_vec[c])
+  ))
+}
+saveRDS(op_acc, here("Results", "oncopredict_rank_acc_scores.rds"))
+```
+
+## Plots
+
+```{r}
+op_subtype = unique(op_acc$subtype)
+op_subtype_scores = data.frame(subtype=op_subtype, accuracy=0, n = 0)
+
+for (i in 1:length(op_subtype)){
+    #Subset data per subtype
+    subset = op_acc[which(op_acc$subtype == op_subtype[i]),]
+    
+    #Store subtype name
+    op_subtype_scores$subtype[i] = op_subtype[i]
+    
+    #calc and store % of cell line survivals correctly predicted
+    op_subtype_scores$accuracy[i] = round((sum(subset$acc_score)/nrow(subset)), digits=3)
+    
+    #Indicate number of cell lines in subtype (n)
+    op_subtype_scores$n[i] = nrow(subset)
+}
+#order the rows by highest to lowest correct
+op_subtype_scores = op_subtype_scores[order(op_subtype_scores$accuracy),]
+
+#To maintain this order when we plot later, factorize the column
+op_subtype_scores$subtype <- factor(op_subtype_scores$subtype,
+                                      ordered = TRUE,
+                                      levels = op_subtype_scores$subtype)
+
+cancer_order = (as.character(op_subtype_scores$subtype))[-c(which(as.character(op_subtype_scores$subtype)=="UNCLASSIFIED"))]
+op_acc = op_acc %>% filter(subtype != "UNCLASSIFIED")
+op_acc$subtype <- factor(op_acc$subtype,
+                         ordered = TRUE, 
+                         levels = c(cancer_order))
+op_acc = op_acc[order(op_acc$subtype),]
+op_subtype_scores = op_subtype_scores %>% filter(subtype != "UNCLASSIFIED")
+
+ggplot(op_acc, aes(x = subtype, y=acc_score)) + #select data to plot
+  geom_boxplot(width=0.4, fill="#c8b6ff", alpha = 0.6, fatten = NULL) + #boxplot, fatten=null is getting rid of the median line
+  ggbeeswarm::geom_quasirandom(method="smiley", width=0.2, alpha=0.4, size = 3, color="#6d597a") + #beeswarm
+  stat_summary(fun.y = mean, geom = "errorbar", aes(ymax = ..y.., ymin = ..y..), #add in a line to indicate the mean
+               width = 0.4, size = 2, linetype = "solid") +
+  
+  geom_label(data=na.omit(op_subtype_scores), aes(x = subtype, y = 0, label = n), #add n
+             label.padding = unit(0.15, "lines"), label.size = 0.4, size = 8) +
+  
+ 
+  scale_y_continuous(limits = c(0, 1), breaks = c(0, 0.2, 0.4, 0.6, 0.8, 1)) +
+  
+  labs(title=paste0("Predictive Accuracy of oncoPredict Ranking"),
+       subtitle = paste0(nrow(op_acc)," Cell Lines against 10 drugs"),
+       y = "Predictive Accuracy", x = "Disease Site") +
+  
+  theme_bw(base_size = 15) + #theme and sizing
+  theme(axis.text.y = element_text(size = 20),
+        axis.text.x = element_text(angle=30, size = 20, hjust=.9),
+        legend.position = "none",
+        plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(hjust = 0.5),
+        axis.text = element_text(size = 10))
+ggsave(filename=here("Plots", "Method Comparison",
+                     "oncoPredict_accuracy_boxplots.png"), 
+       width = 15, height = 9)
+
+
+```
+

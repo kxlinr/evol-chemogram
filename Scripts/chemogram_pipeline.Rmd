@@ -555,11 +555,11 @@ find_score = function(data, cl){
 
   subset = data %>% filter(cell_line==cl) #filter to just one cl at a time
 
-  subset = subset[order(subset$surv, decreasing = FALSE),] #put drugs in order from most response to least response
+  subset = subset[order(subset$surv, decreasing = FALSE),] #put drugs in order of incr surv -> most sens to most res
   if(nrow(subset)==length(sigs)){
     subset$true_rank = (seq(1, length(sigs))) #label the observed sensitivity rank
 
-    subset = subset[order(subset$score, decreasing = TRUE),] #put drugs in order from most response to least response
+    subset = subset[order(subset$score, decreasing = TRUE),] #put drugs in order decr sig score  -> most sens to most res
 
     score = match_df(acc_scores, as.data.frame(t(subset$true_rank))) #find which score goes with the prediction ranking
     score=as.numeric(score$score)
@@ -667,6 +667,7 @@ subtype_scores = subtype_scores[order(subtype_scores$subtype),]
 
 #save
 # saveRDS(scored_ranks_full, here("Results", paste0(length(sigs),"sig_accuracy_scores_cleaned.rds")))
+scored_ranks_full = readRDS(here("Results", paste0(length(sig_drugs),"sig_accuracy_scores_cleaned.rds")))
 ```
 
 
