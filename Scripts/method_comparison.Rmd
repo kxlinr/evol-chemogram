@@ -12,13 +12,15 @@ knitr::opts_chunk$set(echo = TRUE)
 ```
 
 ```{r}
-# devtools::install_git("https://github.com/HuangLabUMN/oncoPredict")
+# devtools::install_git("https://github.com/HuangLabUMN/oncoPredict"
 ```
 
 
 ```{r}
-library(here)
+library(here) 
+library(limma)
 library(oncoPredict)
+library(patchwork)
 library(tidyverse)
 
 set.seed(323)
@@ -48,6 +50,7 @@ fit_results = readRDS(here("Results",
 acc_scores = readRDS(here("Results", paste0(length(sig_drugs),"sig_score_table.rds")))
 ```
 
+up-sigs
 ```{r}
 scored_ranks_full = readRDS(here("Results", paste0(length(sig_drugs),"sig_accuracy_scores_cleaned.rds")))
 
@@ -84,7 +87,7 @@ subtype_scores$subtype <- factor(subtype_scores$subtype,
 scored_ranks_full = scored_ranks_full %>% filter(subtype != "UNCLASSIFIED")
 
 #Set order to = subtype_scores
-cancer_order = (as.character(subtype_scores$subtype))[-c(which(as.character(subtype_scores$subtype)=="UNCLASSIFIED"))]
+cancer_order = (as.character(subtype_scores$subtype))
 
 scored_ranks_full$subtype <- factor(scored_ranks_full$subtype, 
                                       ordered = TRUE, 
@@ -100,6 +103,472 @@ rm(subset, cancer_order)
 ```
 
 
+# UpDown Sigs
+
+Predicted sensitivity is scored using median(upreg sig expr) - median(downreg sig expr)
+
+## load updown-sigs
+```{r}
+ud_scored_ranks_full = readRDS(here("Results",
+                                 paste0(length(sig_drugs),
+                                        "sig_updown_accuracy_scores_cleaned.rds")))
+
+#create a new df with one row per subtype, and columns = subtype, proportion_correct
+ud_subtype = unique(ud_scored_ranks_full$subtype)
+ud_subtype_scores = data.frame(subtype=ud_subtype, accuracy=0, n = 0)
+
+for (i in 1:length(ud_subtype)){
+    #Subset data per subtype
+    subset = ud_scored_ranks_full[which(ud_scored_ranks_full$subtype == subtype[i]),]
+    
+    #Store subtype name
+    ud_subtype_scores$subtype[i] = subtype[i]
+    
+    #calc and store % of cell line survivals correctly predicted
+    ud_subtype_scores$accuracy[i] = round((sum(subset$accuracy)/nrow(subset)), digits=3)
+    
+    #Indicate number of cell lines in subtype (n)
+    ud_subtype_scores$n[i] = nrow(subset)
+}
+
+
+#order the rows by highest to lowest correct
+ud_subtype_scores = ud_subtype_scores[order(ud_subtype_scores$accuracy),]
+
+#To maintain this order when we plot later, factorize the column
+ud_subtype_scores$subtype <- factor(ud_subtype_scores$subtype,
+                                      ordered = TRUE,
+                                      levels = ud_subtype_scores$subtype)
+
+
+
+#remove unclassified cell lines
+ud_scored_ranks_full = ud_scored_ranks_full %>% filter(subtype != "UNCLASSIFIED")
+
+#Set order to = subtype_scores
+cancer_order = (as.character(ud_subtype_scores$subtype))
+
+ud_scored_ranks_full$subtype <- factor(ud_scored_ranks_full$subtype, 
+                                      ordered = TRUE, 
+                                      levels = c(cancer_order))
+ud_scored_ranks_full = ud_scored_ranks_full[order(ud_scored_ranks_full$subtype),]
+
+#remove unclassified from subtype score averages
+ud_subtype_scores$subtype <- factor(ud_subtype_scores$subtype, 
+                                      ordered = TRUE, 
+                                      levels = c(cancer_order))
+ud_subtype_scores = ud_subtype_scores[order(ud_subtype_scores$subtype),]
+rm(subset, cancer_order)
+```
+
+## plot against chemogram
+
+```{r}
+plot_ud_cg = full_join(ud_scored_ranks_full %>%
+                         mutate(updownSigs=accuracy)%>%
+                         select(cell_line,updownSigs, subtype),
+                       scored_ranks_full %>% 
+                         mutate(Chemogram=accuracy) %>%
+                         select(cell_line,Chemogram, subtype),
+                       by="cell_line") %>% select(-subtype.y)
+plot_ud_cg = pivot_longer(plot_ud_cg,
+                          cols=c("updownSigs", "Chemogram"),
+                          names_to = "Method",
+                          values_to="Accuracy")
+pd <- position_dodge(width = 0.7)
+
+ggplot(na.omit(plot_ud_cg), aes(x = subtype.x, y=Accuracy, fill=Method, col=Method)) + #select data to plot
+  geom_boxplot(width=0.5, alpha = 0.6, fatten = NULL,position = pd) + #boxplot, fatten=null is getting rid of the median line
+  # ggbeeswarm::geom_quasirandom(method="smiley", width=0.2, #beeswarm
+  #                              alpha=0.4, size = 3, position = pd) + 
+  stat_summary(fun.y = mean, geom = "errorbar", #add in a line to indicate the mean
+               aes(ymax = ..y.., ymin = ..y..), 
+               width = 0.5, size = 2, linetype = "solid",
+               position = pd) +
+  
+  scale_fill_manual(values=c("#9b2226","#edafb8")) +
+  scale_color_manual(values=c("#6a040f","#c9184a")) +
+  
+  geom_label(data=na.omit(ss_subtype_scores), aes(x = subtype, y = 0, label = n), #add n
+             label.padding = unit(0.15, "lines"), label.size = 0.4, size = 8,
+             inherit.aes = FALSE) +
+  
+  scale_y_continuous(limits=c(0,1), breaks = c(0,0.25,.5,.75,1))+
+  labs(title = paste0("Predictive Accuracy of upSigs vs upDownSigs"), #titles and axis labels
+       subtitle = paste0(nrow(scored_ranks_full)," Cell Lines"),
+       y = "Predictive Accuracy Score", x = "Disease Site") +
+  
+  theme_bw(base_size = 15) + #theme and sizing
+  theme(axis.text.y = element_text(size = 20),
+        axis.text.x = element_text(size = 20, angle=30, hjust=0.9),
+        legend.position = "top",
+        plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(hjust = 0.5),
+        axis.text = element_text(size = 10))
+
+ggsave(here("Plots","Method Comparison", "ud_vs_chemogram.png"),
+       width = 15, height = 9) #save plot
+```
+
+correlation by cell line
+```{r}
+summary(scored_ranks_full$cell_line %in% ud_scored_ranks_full$cell_line)
+scored_ranks_full = scored_ranks_full[match(ud_scored_ranks_full$cell_line,
+                                            scored_ranks_full$cell_line),]
+summary(scored_ranks_full$cell_line == ud_scored_ranks_full$cell_line)
+cor(x=scored_ranks_full %>% select(accuracy),
+    y=ud_scored_ranks_full %>% select(Accuracy),
+    method="spearman")
+#pearson 0.32 and spearman 0.33
+```
+
+correlation by subtype mean
+```{r}
+subtype_scores = subtype_scores[match(ud_subtype_scores$subtype,
+                                            subtype_scores$subtype),]
+cor(x=subtype_scores %>% select(accuracy),
+    y=ud_subtype_scores %>% select(accuracy),
+    method="pearson")
+#pearson 0.27 and spearman 0.17
+```
+
+
+
+# Simple Signatures
+
+Rather than 5-fold cross-validation, multiple DE methods, and in vivo coexpression network filtering as we did for our original 10 signatures, we'll assess how the chemogram framework performs when using much simpler signatures. I'll use `limma` (out of the 3 methods we used originally, this one is the most popular/has the most citations) to measure differential expression between the top and bottom 20%  of responders (same as our original method) for each of our 10 drugs, then use the genes upregulated in the sensitive samples as the simple signatures.
+
+## Run Method
+
+To start, we'll need to load in the GDSC2 IC50 data.
+
+```{r}
+gdsc_ic50 = readxl::read_xlsx(here("Data", "Method Comparison Data", 
+                                   "GDSC2_fitted_dose_response_27Oct23.xlsx"))
+gdsc_ic50 = gdsc_ic50 %>% #harmonize names with ours and keep only the info we need
+  mutate(log2_ic50 = log2(exp(LN_IC50)),
+         subtype = TCGA_DESC,
+         drug = DRUG_NAME) %>%
+  select(COSMIC_ID, subtype, drug, log2_ic50)
+
+#subset to only the samples/drugs we need
+expr_cl = unique(exprs_norm$COSMIC_ID)
+gdsc_ic50 = gdsc_ic50 %>% 
+  filter(drug %in% sig_drugs,
+         COSMIC_ID %in% expr_cl)
+```
+
+First, we need to label which samples are in the sensitive/resistant ends for each drug.
+```{r}
+de_perc = 0.2 #compare top and bot 20%
+labeled_gdsc_ic50 = data.frame()
+
+for(d in 1:length(sig_drugs)){
+  subset = gdsc_ic50 %>%
+    filter(drug == sig_drugs[d])
+  de_n = floor(de_perc * nrow(subset)) #how many cell lines to compare per group
+  
+  subset = subset[order(subset$log2_ic50, decreasing=F),] #low IC50 (S) at the top
+  sens_cl = subset$COSMIC_ID[c(1:de_n)]
+  subset = subset[order(subset$log2_ic50, decreasing=T),] #high IC50 (R) at the top
+  res_cl = subset$COSMIC_ID[c(1:de_n)]
+  
+  subset = subset %>%
+    mutate(resp_class = case_when(COSMIC_ID %in% sens_cl ~ "sensitive",
+                                  COSMIC_ID %in% res_cl ~ "resistant",
+                                  TRUE ~ "neither"))
+  
+  labeled_gdsc_ic50 = rbind(labeled_gdsc_ic50,subset)
+  rm(subset)
+}
+#remove the samples we wont need
+labeled_gdsc_ic50 = labeled_gdsc_ic50 %>%
+  filter(resp_class != "neither")
+```
+
+Run limma DE for each drug.
+```{r}
+simple_sigs = list()
+for(d in 1:length(sig_drugs)){
+  print(paste(d, ",", sig_drugs[d]))
+  dr = labeled_gdsc_ic50 %>% filter(drug==sig_drugs[d])
+  #prep the input data
+  dr_cl = unique(dr$COSMIC_ID)
+  ex = exprs_norm %>% filter(COSMIC_ID %in% dr_cl)
+  ex = t(ex)
+  colnames(ex) = ex[1,]
+  ex = ex[-1,]
+  class(ex) = "numeric"
+  cl_order = colnames(ex)
+  dr = dr[match(cl_order, dr$COSMIC_ID),]
+  
+  group = factor(dr$resp_class)
+  design = model.matrix(~0+group)
+  contrast = makeContrasts(sensVres = groupsensitive - groupresistant, levels=design)
+  
+  #fit the models
+  lmf = lmFit(ex, design)
+  cfit = contrasts.fit(lmf, contrast)
+  fit = eBayes(cfit, trend = TRUE, robust = FALSE)
+  tt = topTable(fit, number = Inf, p.value = 0.3, coef = "sensVres", 
+                   adjust.method = "none", lfc = 0.5)
+  
+  #determine which genes are up in sensitive samples
+  genes = rownames(tt)
+  sens_cl = (dr %>% filter(resp_class=="sensitive")%>%select(COSMIC_ID))$COSMIC_ID
+  res_cl = (dr %>% filter(resp_class=="resistant")%>%select(COSMIC_ID))$COSMIC_ID
+  sens_ex = ex[genes,as.character(sens_cl)]
+  res_ex = ex[genes,as.character(res_cl)]
+  sens_av = rowMeans(sens_ex)
+  res_av = rowMeans(res_ex)
+  
+  sig = vector()
+  for(g in 1:length(genes)){
+    if(sens_av[genes[g]] > res_av[genes[g]]){
+      sig[g] = genes[g]
+    }
+  }
+  sig=na.omit(sig)
+  
+  simple_sigs[[d]] = sig
+  names(simple_sigs)[d] = sig_drugs[d]
+  
+  rm(dr, dr_cl, ex, cl_order, 
+     group, design, contrast, 
+     lmf, cfit, fit, tt, genes, 
+     sens_cl, res_cl, sens_ex, res_ex, 
+     sens_av, res_av, sig)
+}
+saveRDS(simple_sigs, here("Data", "Method Comparison Data", "limma0.2_sigs.rds"))
+```
+
+Apply the chemogram method. I'll copy and paste code directly from `chemogram_pipeline.Rmd`.
+
+```{r}
+sig_score = function(sig_genes, exprs, drug_abbrev){
+  
+  exprs_norm2 = exprs %>%
+    dplyr::select(COSMIC_ID, all_of(sig_genes))
+  
+  #Find signature score for each cell line
+  sig_exprs = exprs_norm2[,-1] %>% 
+    mutate(score = apply(.,1,median), cosmic_id = exprs$COSMIC_ID)
+  
+  #clean up result
+  score = sig_exprs %>% dplyr::select(cosmic_id, score)
+  rownames(score) = sig_exprs$cosmic_id
+  colnames(score) = c("cell_line", "score")
+  
+  score$drug_abbrev = drug_abbrev
+
+  return(score)
+}
+
+#Run the above function for each sig
+simple_scores = list()
+
+for(i in 1:length(simple_sigs)){
+  simple_scores[[i]] = sig_score(sig_genes=simple_sigs[[i]],
+                          exprs=exprs_norm,
+                          drug_abbrev=names(simple_sigs)[i])
+  names(simple_scores)[i] = names(simple_sigs)[i]
+}
+#Label cancer type of each cell line
+for(i in 1:length(simple_scores)){
+  #label subtypes
+  simple_scores[[i]] = full_join(simple_scores[[i]], subtype_key, by="cell_line")
+
+  #replace NAs with "unclassified"
+  simple_scores[[i]]$subtype = simple_scores[[i]]$subtype %>%
+  replace_na('UNCLASSIFIED') #replace any more cancer subtype NAs w/ unclassif.
+}
+simple_scores_df = do.call(rbind, simple_scores)
+
+scores_df_wide = pivot_wider(simple_scores_df,
+                             id_cols = c(cell_line, subtype),
+                             names_from = drug_abbrev,
+                             values_from = score,
+                             values_fn = mean #for duplicate scores on the same cl+drug, use the mean
+                             )
+
+simple_scores = scores_df_wide
+rm(simple_scores_df, scores_df_wide)
+simple_scores = simple_scores %>% select(-`NA`)
+simple_scores = na.omit(simple_scores)
+
+saveRDS(simple_scores, here(here("Data", "Method Comparison Data", "simple_sig_scores.rds")))
+
+simple_scores_long = pivot_longer(simple_scores,
+                           cols = c(names(simple_sigs)),
+                           names_to = "drug",
+                           values_to = "score")
+```
+
+Score the predictions
+```{r}
+find_score = function(data, cl, sigs){
+
+  subset = data %>% filter(cell_line==cl) #filter to just one cl at a time
+
+  subset = subset[order(subset$surv, decreasing = FALSE),] #put drugs in order of incr surv -> most sens to most res
+  if(nrow(subset)==length(sigs)){
+    subset$true_rank = (seq(1, length(sigs))) #label the observed sensitivity rank
+
+    subset = subset[order(subset$score, decreasing = TRUE),] #put drugs in order decr sig score  -> most sens to most res
+
+    score = plyr::match_df(acc_scores, as.data.frame(t(subset$true_rank))) #find which score goes with the prediction ranking
+    score=as.numeric(score$score)
+  } else { #there may be cell lines without data for all the drugs, so those need to be filtered out here
+    print("Missing drug")
+    score=NA
+  }
+
+  return(score)
+}
+all_cl = unique(fit_results$cell_line)
+unscored_ranks = full_join(fit_results, simple_scores_long,
+                           by=c("cell_line", "subtype", "drug"))
+
+simple_scored_ranks = data.frame(cell_line = all_cl, subtype = NA, accuracy = 0)
+
+
+for(i in 1:length(all_cl)){
+  print(paste(i, "out of", length(all_cl), "--", ((i/length(all_cl))*100), "%"))
+
+  simple_scored_ranks$cell_line[i] = all_cl[i]
+
+  simple_scored_ranks$subtype[i] = as.character(unique(unscored_ranks %>%
+    filter(cell_line==all_cl[i]) %>%
+    select(subtype)))
+
+  value = find_score(data=unscored_ranks, 
+                     cl = all_cl[i], 
+                     sigs=simple_sigs)
+  print(value)
+  simple_scored_ranks$accuracy[i] = value
+}
+saveRDS(simple_scored_ranks, here("Data", "Method Comparison Data", 
+                                  "simple_scored_ranks.rds"))
+simple_scored_ranks = na.omit(simple_scored_ranks) #968 to 942 rows
+```
+
+## Plots
+
+prep data
+```{r}
+simple_scored_ranks = readRDS(here("Data", "Method Comparison Data", 
+                                   "simple_scored_ranks.rds"))
+simple_scored_ranks = na.omit(simple_scored_ranks) #968 to 942 rows
+ss_subtype = unique(simple_scored_ranks$subtype)
+ss_subtype_scores = data.frame(subtype=ss_subtype, accuracy=0, n = 0)
+
+for (i in 1:length(ss_subtype)){
+    #Subset data per subtype
+    subset = simple_scored_ranks[which(simple_scored_ranks$subtype == ss_subtype[i]),]
+    
+    #Store subtype name
+    ss_subtype_scores$subtype[i] = ss_subtype[i]
+    
+    #calc and store % of cell line survivals correctly predicted
+    ss_subtype_scores$accuracy[i] = round((sum(subset$accuracy)/nrow(subset)), digits=3)
+    
+    #Indicate number of cell lines in subtype (n)
+    ss_subtype_scores$n[i] = nrow(subset)
+}
+#order the rows by highest to lowest correct
+ss_subtype_scores = ss_subtype_scores[order(ss_subtype_scores$accuracy),]
+
+#To maintain this order when we plot later, factorize the column
+ss_subtype_scores$subtype <- factor(ss_subtype_scores$subtype,
+                                      ordered = TRUE,
+                                      levels = ss_subtype_scores$subtype)
+
+cancer_order = (as.character(ss_subtype_scores$subtype))[-c(which(as.character(ss_subtype_scores$subtype)=="UNCLASSIFIED"))]
+simple_scored_ranks = simple_scored_ranks %>% filter(subtype != "UNCLASSIFIED")
+simple_scored_ranks$subtype <- factor(simple_scored_ranks$subtype,
+                         ordered = TRUE, 
+                         levels = c(cancer_order))
+simple_scored_ranks = simple_scored_ranks[order(simple_scored_ranks$subtype),]
+ss_subtype_scores = ss_subtype_scores %>% filter(subtype != "UNCLASSIFIED")
+```
+
+plot alone
+```{r}
+ggplot(simple_scored_ranks, aes(x = subtype, y=accuracy)) + #select data to plot
+  geom_boxplot(width=0.4, fill="#ffb4a2", alpha = 0.6, fatten = NULL) + #boxplot, fatten=null is getting rid of the median line
+  ggbeeswarm::geom_quasirandom(method="smiley", width=0.2, alpha=0.4, size = 3, color="#e07a5f") + #beeswarm
+  stat_summary(fun.y = mean, geom = "errorbar", aes(ymax = ..y.., ymin = ..y..), #add in a line to indicate the mean
+               width = 0.4, size = 2, linetype = "solid") +
+  
+  geom_label(data=na.omit(ss_subtype_scores), aes(x = subtype, y = 0, label = n), #add n
+             label.padding = unit(0.15, "lines"), label.size = 0.4, size = 8) +
+  
+ 
+  scale_y_continuous(limits = c(0, 1), breaks = c(0, 0.25, 0.5, 0.75, 1)) +
+  
+  labs(title=paste0("Predictive Accuracy of Simple Signatures' Ranking"),
+       subtitle = paste0(nrow(simple_scored_ranks)," Cell Lines against 10 drugs"),
+       y = "Predictive Accuracy", x = "Disease Site") +
+  
+  theme_bw(base_size = 15) + #theme and sizing
+  theme(axis.text.y = element_text(size = 20),
+        axis.text.x = element_text(angle=30, size = 20, hjust=.9),
+        legend.position = "none",
+        plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(hjust = 0.5),
+        axis.text = element_text(size = 10))
+ggsave(filename=here("Plots", "Method Comparison",
+                     "ss_accuracy_boxplots.png"), 
+       width = 15, height = 9)
+```
+
+plot against chemogram
+```{r}
+plot_ss_cg = full_join(simple_scored_ranks %>%
+                         mutate(SimpleSigs=accuracy)%>%
+                         select(cell_line,SimpleSigs, subtype),
+                       scored_ranks_full %>% 
+                         mutate(Chemogram=accuracy) %>%
+                         select(cell_line,Chemogram, subtype),
+                       by="cell_line") %>% select(-subtype.y)
+plot_ss_cg = pivot_longer(plot_ss_cg,
+                          cols=c("SimpleSigs", "Chemogram"),
+                          names_to = "Method",
+                          values_to="Accuracy")
+pd <- position_dodge(width = 0.7)
+
+ggplot(na.omit(plot_ss_cg), aes(x = subtype.x, y=Accuracy, fill=Method, col=Method)) + #select data to plot
+  geom_boxplot(width=0.5, alpha = 0.6, fatten = NULL,position = pd) + #boxplot, fatten=null is getting rid of the median line
+  # ggbeeswarm::geom_quasirandom(method="smiley", width=0.2, #beeswarm
+  #                              alpha=0.4, size = 3, position = pd) + 
+  stat_summary(fun.y = mean, geom = "errorbar", #add in a line to indicate the mean
+               aes(ymax = ..y.., ymin = ..y..), 
+               width = 0.5, size = 2, linetype = "solid",
+               position = pd) +
+  
+  scale_fill_manual(values=c("#9b2226","#ffb4a2")) +
+  scale_color_manual(values=c("#6a040f","#e07a5f")) +
+  
+  geom_label(data=na.omit(ss_subtype_scores), aes(x = subtype, y = 0, label = n), #add n
+             label.padding = unit(0.15, "lines"), label.size = 0.4, size = 8,
+             inherit.aes = FALSE) +
+  
+  scale_y_continuous(limits=c(0,1), breaks = c(0,0.25,.5,.75,1))+
+  labs(title = paste0("Predictive Accuracy of Chemogram vs Simple Sigs"), #titles and axis labels
+       subtitle = paste0(nrow(scored_ranks_full)," Cell Lines"),
+       y = "Predictive Accuracy Score", x = "Disease Site") +
+  
+  theme_bw(base_size = 15) + #theme and sizing
+  theme(axis.text.y = element_text(size = 20),
+        axis.text.x = element_text(size = 20, angle=30, hjust=0.9),
+        legend.position = "top",
+        plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(hjust = 0.5),
+        axis.text = element_text(size = 10))
+
+ggsave(here("Plots","Method Comparison", "ss_vs_chemogram.png"),
+       width = 17, height = 9) #save plot
+```
 
 # OncoPredict
 
@@ -218,7 +687,9 @@ saveRDS(op_acc, here("Results", "oncopredict_rank_acc_scores.rds"))
 
 ## Plots
 
+prep data
 ```{r}
+op_acc = readRDS(here("Results", "oncopredict_rank_acc_scores.rds"))
 op_subtype = unique(op_acc$subtype)
 op_subtype_scores = data.frame(subtype=op_subtype, accuracy=0, n = 0)
 
@@ -250,7 +721,10 @@ op_acc$subtype <- factor(op_acc$subtype,
                          levels = c(cancer_order))
 op_acc = op_acc[order(op_acc$subtype),]
 op_subtype_scores = op_subtype_scores %>% filter(subtype != "UNCLASSIFIED")
+```
 
+plot alone
+```{r}
 ggplot(op_acc, aes(x = subtype, y=acc_score)) + #select data to plot
   geom_boxplot(width=0.4, fill="#c8b6ff", alpha = 0.6, fatten = NULL) + #boxplot, fatten=null is getting rid of the median line
   ggbeeswarm::geom_quasirandom(method="smiley", width=0.2, alpha=0.4, size = 3, color="#6d597a") + #beeswarm
@@ -261,7 +735,7 @@ ggplot(op_acc, aes(x = subtype, y=acc_score)) + #select data to plot
              label.padding = unit(0.15, "lines"), label.size = 0.4, size = 8) +
   
  
-  scale_y_continuous(limits = c(0, 1), breaks = c(0, 0.2, 0.4, 0.6, 0.8, 1)) +
+  scale_y_continuous(limits = c(0, 1), breaks = c(0, 0.25, 0.5, 0.75, 1)) +
   
   labs(title=paste0("Predictive Accuracy of oncoPredict Ranking"),
        subtitle = paste0(nrow(op_acc)," Cell Lines against 10 drugs"),
@@ -277,7 +751,599 @@ ggplot(op_acc, aes(x = subtype, y=acc_score)) + #select data to plot
 ggsave(filename=here("Plots", "Method Comparison",
                      "oncoPredict_accuracy_boxplots.png"), 
        width = 15, height = 9)
+```
+
+plot against chemogram
+```{r}
+plot_op_cg = full_join(op_acc %>%
+                         mutate(oncoPredict=acc_score)%>%
+                         select(cell_line,oncoPredict, subtype),
+                       scored_ranks_full %>% 
+                         mutate(Chemogram=accuracy) %>%
+                         select(cell_line,Chemogram, subtype),
+                       by="cell_line") %>% select(-subtype.y)
+plot_op_cg = pivot_longer(plot_op_cg,
+                          cols=c("oncoPredict", "Chemogram"),
+                          names_to = "Method",
+                          values_to="Accuracy")
+pd <- position_dodge(width = 0.7)
+
+ggplot(na.omit(plot_op_cg), aes(x = subtype.x, y=Accuracy, fill=Method, col=Method)) + #select data to plot
+  geom_boxplot(width=0.5, alpha = 0.6, fatten = NULL,position = pd) + #boxplot, fatten=null is getting rid of the median line
+  # ggbeeswarm::geom_quasirandom(method="smiley", width=0.2, #beeswarm
+  #                              alpha=0.4, size = 3, position = pd) + 
+  stat_summary(fun.y = mean, geom = "errorbar", #add in a line to indicate the mean
+               aes(ymax = ..y.., ymin = ..y..), 
+               width = 0.5, size = 2, linetype = "solid",
+               position = pd) +
+  
+  scale_fill_manual(values=c("#9b2226","#c8b6ff")) +
+  scale_color_manual(values=c("#6a040f","#6d597a")) +
+  
+  geom_label(data=na.omit(op_subtype_scores), aes(x = subtype, y = 0, label = n), #add n
+             label.padding = unit(0.15, "lines"), label.size = 0.4, size = 8,
+             inherit.aes = FALSE) +
+  
+  scale_y_continuous(limits=c(0,1), breaks = c(0,0.25,.5,.75,1))+
+  labs(title = paste0("Predictive Accuracy of Chemogram vs oncoPredict"), #titles and axis labels
+       subtitle = paste0(nrow(scored_ranks_full)," Cell Lines"),
+       y = "Predictive Accuracy Score", x = "Disease Site") +
+  
+  theme_bw(base_size = 15) + #theme and sizing
+  theme(axis.text.y = element_text(size = 20),
+        axis.text.x = element_text(size = 20, angle=30, hjust=0.9),
+        legend.position = "top",
+        plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(hjust = 0.5),
+        axis.text = element_text(size = 10))
+
+ggsave(here("Plots","Method Comparison", "oncoPred_vs_chemogram.png"),
+       width = 17, height = 9) #save plot
+```
+
+# Plot All Methods
+
+plot chemogram, simple, oncopred by cancer type
+```{r}
+plot3 = rbind(plot_ss_cg, plot_op_cg %>% filter(Method=="oncoPredict"))
+colnames(plot3)
+
+cancer_order = subtype_scores$subtype
+plot3 = plot3 %>%
+  mutate(subtype.x = factor(subtype.x, ordered=TRUE,
+                            levels=na.omit(cancer_order)))
+
+ggplot(na.omit(plot3), aes(x=subtype.x, y=Accuracy, fill=Method, col=Method)) +
+  geom_boxplot(width=0.4, alpha = 0.6, fatten = NULL, position=pd) +
+  scale_fill_manual(values=c("#9b2226","#c8b6ff", "#ffb4a2")) +
+  scale_color_manual(values=c("#6a040f","#6d597a","#e07a5f")) +
+  stat_summary(fun.y = mean, geom = "errorbar", 
+               aes(ymax = ..y.., ymin = ..y..), #add in a line to indicate the mean
+               width = 0.4, size = 2, linetype = "solid", position=pd) +
+  
+  geom_label(data=na.omit(subtype_scores), aes(x = subtype, y = 0, label = n), #add n
+             label.padding = unit(0.15, "lines"), label.size = 0.4, size = 8,
+             inherit.aes = FALSE) +
+  
+ 
+  scale_y_continuous(limits = c(0, 1), breaks = c(0, 0.25, 0.5, 0.75, 1)) +
+  
+  labs(title=paste0("Predictive Accuracy of Chemogram vs Other Methods"),
+       subtitle = paste0(nrow(scored_ranks_full)," Cell Lines against 10 drugs"),
+       y = "Predictive Accuracy", x = "Disease Site") +
+  
+  theme_bw(base_size = 15) + #theme and sizing
+  theme(axis.text.y = element_text(size = 20),
+        axis.text.x = element_text(angle=30, size = 20, hjust=.9),
+        legend.position = "none",
+        plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(hjust = 0.5),
+        axis.text = element_text(size = 10))
+
+ggsave(here("Plots","Method Comparison", "ss_v_oncoPred_vs_chemogram.png"),
+       width = 18, height = 9) #save plot
+```
+
+plot without subtype, add null sigs
+```{r}
+nullsigs = readRDS(here("Results", paste0("null_", 1000, "_bootstrap_", 
+                                                  10, "sig_indiv_scores.rds")))%>% 
+  filter(subtype != "UNCLASSIFIED")
+colnames(nullsigs)
+colnames(plot3)
+
+summary(nullsigs)
+
+nullsigs = nullsigs %>%
+  mutate(subtype.x = subtype,
+         Accuracy = as.numeric(n_accuracy),
+         Method = "nullsigs") %>%
+  select(cell_line, subtype.x, Method, Accuracy)
+```
+
+combine data
+```{r}
+plot4 = rbind(plot3, nullsigs)
+
+colnames(ud_scored_ranks_full)
+ud_scored_ranks_full = ud_scored_ranks_full %>%
+  mutate(subtype.x = subtype,
+         Accuracy = accuracy,
+         Method = "updownSigs") %>%
+   select(cell_line, subtype.x, Method, Accuracy)
+plot5 = rbind(plot4 %>%mutate(Method=case_when(Method=="Chemogram"~"upSigs",
+                                               TRUE~Method)),
+              ud_scored_ranks_full)
+summary(plot5)
+plot5 = plot5 %>%
+  mutate(Method = factor(Method, ordered=T,
+                         levels=c("nullsigs",
+                                  "SimpleSigs",
+                                  "oncoPredict",
+                                  "upSigs",
+                                  "updownSigs"
+                                  )))
+
+saveRDS(plot5, here("Results", "all_method_comparisons.rds"))
+```
 
 
+```{r}
+# cg = na.omit(plot3)%>% filter(Method=="Chemogram") %>%select(Accuracy)
+# op = na.omit(plot3)%>% filter(Method=="oncoPredict") %>%select(Accuracy)
+# ss = na.omit(plot3)%>% filter(Method=="simpleSigs") %>%select(Accuracy)
+# 
+# wilcox.test(x=as.vector(cg)$Accuracy,
+#             y=as.vector(op)$Accuracy,
+#                     paired=FALSE, alternative="two.sided")
+ggplot(na.omit(plot5), aes(x=Method, y=Accuracy, fill=Method, col=Method)) +
+  geom_violin(width=0.5, alpha=0.6) +
+  geom_boxplot(width=0.2, alpha = 0.6, position=pd) +
+  scale_fill_manual(values=c("#a8dadc","#ffb4a2",  "#c8b6ff", "#9b2226", "#edafb8")) +
+  scale_color_manual(values=c("#03045e","#e07a5f", "#6d597a","#6a040f", "#c9184a")) +
+  # scale_fill_manual(values=c("#edafb8","#9b2226",  "#c8b6ff", "#ffb4a2", "#a8dadc")) +
+  # scale_color_manual(values=c("#c9184a","#6a040f", "#6d597a","#e07a5f", "#03045e")) +
+  
+  scale_y_continuous(limits = c(0, 1), breaks = c(0, 0.25, 0.5, 0.75, 1)) +
+  
+  labs(title=paste0("Predictive Accuracy Various Methods"),
+       subtitle = paste0(nrow(scored_ranks_full)," Cell Lines against 10 drugs"),
+       y = "Predictive Accuracy", x = "Disease Site") +
+  
+  theme_bw(base_size = 15) + #theme and sizing
+  theme(axis.text.y = element_text(size = 20),
+        axis.text.x = element_text(size = 18, angle=30, hjust=1, vjust=1),
+        legend.position = "none",
+        plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(hjust = 0.5),
+        axis.text = element_text(size = 10))
+
+ggsave(here("Plots","Method Comparison", "chemogram_v_others_nosubtypes.png"),
+       width = 6, height = 6)
+```
+
+# Statistical Testing by Subtype
+
+```{r}
+plot5 = na.omit(readRDS(here("Results", "all_method_comparisons.rds")))
+summary(plot5$Method)
+```
+
+## Without stratification by cancer type
+
+For all these methods, the null distribution is only *truly* comparable to the original because the null bootstrap used random signatures the same lengths as the original signatures. It is likely that any null bootstrap done with the parameters of the other models would look very similar to the null boostrap we show here, but this difference in approach should be kept in mind.
+
+With Bonferroni correction, only original vs null is statistically significant.
+```{r og_v_x}
+#up vs null
+p_og_n = wilcox.test(x=as.matrix(plot5[which(plot5$Method=="upSigs"), "Accuracy"]),
+            y=as.matrix(plot5[which(plot5$Method=="nullsigs"), "Accuracy"]),
+                    paired=FALSE, alternative="two.sided")$p.value
+#up vs ss
+p_og_ss = wilcox.test(x=as.matrix(plot5[which(plot5$Method=="upSigs"), "Accuracy"]),
+            y=as.matrix(plot5[which(plot5$Method=="SimpleSigs"), "Accuracy"]),
+                    paired=FALSE, alternative="two.sided")$p.value
+#up vs op
+p_og_op = wilcox.test(x=as.matrix(plot5[which(plot5$Method=="upSigs"), "Accuracy"]),
+            y=as.matrix(plot5[which(plot5$Method=="oncoPredict"), "Accuracy"]),
+                    paired=FALSE, alternative="two.sided")$p.value
+#up vs updown
+p_og_ud = wilcox.test(x=as.matrix(plot5[which(plot5$Method=="upSigs"), "Accuracy"]),
+            y=as.matrix(plot5[which(plot5$Method=="updownSigs"), "Accuracy"]),
+                    paired=FALSE, alternative="two.sided")$p.value
+
+#test for signif with bonferroni correction
+print(p_og_n <= 0.05/nrow(unique(plot5%>% 
+                                     filter(Method=="upSigs" | Method=="nullsigs") %>%
+                                     select(cell_line))))
+
+print(p_og_ss <= 0.05/nrow(unique(plot5%>% 
+                                     filter(Method=="upSigs" | Method=="SimpleSigs") %>%
+                                     select(cell_line))))
+
+print(p_og_op <= 0.05/nrow(unique(plot5%>% 
+                                     filter(Method=="upSigs" | Method=="oncoPredict") %>%
+                                     select(cell_line))))
+
+print(p_og_ud <= 0.05/nrow(unique(plot5%>% 
+                                     filter(Method=="upSigs" | Method=="updownSigs") %>%
+                                     select(cell_line))))
+```
+
+updownSigs vs null is statistically significant.
+```{r ud_v_x}
+#updown v null
+p_ud_n = wilcox.test(x=as.matrix(plot5[which(plot5$Method=="updownSigs"), "Accuracy"]),
+            y=as.matrix(plot5[which(plot5$Method=="nullsigs"), "Accuracy"]),
+                    paired=FALSE, alternative="two.sided")$p.value
+#updown vs ss
+p_ud_ss = wilcox.test(x=as.matrix(plot5[which(plot5$Method=="updownSigs"), "Accuracy"]),
+            y=as.matrix(plot5[which(plot5$Method=="SimpleSigs"), "Accuracy"]),
+                    paired=FALSE, alternative="two.sided")$p.value
+#updown vs op
+p_ud_op = wilcox.test(x=as.matrix(plot5[which(plot5$Method=="updownSigs"), "Accuracy"]),
+            y=as.matrix(plot5[which(plot5$Method=="oncoPredict"), "Accuracy"]),
+                    paired=FALSE, alternative="two.sided")$p.value
+
+#test for signif with bonferroni correction
+print(p_ud_n <= 0.05/nrow(unique(plot5%>% 
+                                     filter(Method=="updownSigs" | Method=="nullsigs") %>%
+                                     select(cell_line))))
+
+print(p_ud_ss <= 0.05/nrow(unique(plot5%>% 
+                                     filter(Method=="updownSigs" | Method=="SimpleSigs") %>%
+                                     select(cell_line))))
+
+print(p_ud_op <= 0.05/nrow(unique(plot5%>% 
+                                     filter(Method=="updownSigs" | Method=="oncoPredict") %>%
+                                     select(cell_line))))
+```
+
+oncopred vs null is statistically significant.
+```{r op_v_x}
+#up vs null
+p_op_n = wilcox.test(x=as.matrix(plot5[which(plot5$Method=="oncoPredict"), "Accuracy"]),
+            y=as.matrix(plot5[which(plot5$Method=="nullsigs"), "Accuracy"]),
+                    paired=FALSE, alternative="two.sided")$p.value
+#up vs ss
+p_op_ss = wilcox.test(x=as.matrix(plot5[which(plot5$Method=="oncoPredict"), "Accuracy"]),
+            y=as.matrix(plot5[which(plot5$Method=="SimpleSigs"), "Accuracy"]),
+                    paired=FALSE, alternative="two.sided")$p.value
+#test for signif with bonferroni correction
+print(p_op_n <= 0.05/nrow(unique(plot5%>% 
+                                     filter(Method=="oncoPredict" | Method=="nullsigs") %>%
+                                     select(cell_line))))
+
+print(p_op_ss <= 0.05/nrow(unique(plot5%>% 
+                                     filter(Method=="oncoPredict" | Method=="SimpleSigs") %>%
+                                     select(cell_line))))
+        
+```
+
+no statistical significance with simple sigs vs null.
+```{r ss_v_x}
+#ss vs null
+p_s_n = wilcox.test(x=as.matrix(plot5[which(plot5$Method=="SimpleSigs"), "Accuracy"]),
+            y=as.matrix(plot5[which(plot5$Method=="nullsigs"), "Accuracy"]),
+                    paired=FALSE, alternative="two.sided")$p.value
+#test for signif with bonferroni correction
+print(p_s_n <= 0.05/nrow(unique(plot5%>% 
+                                     filter(Method=="SimpleSigs" | Method=="nullsigs") %>%
+                                     select(cell_line))))
+```
+
+clean up
+```{r}
+rm(p_og_n, p_og_ss, p_og_op, p_og_ud,
+   p_ud_n, p_ud_op, p_ud_ss, 
+   p_op_n, p_op_ss, 
+   p_s_n)
+```
+
+## With stratification by cancer type
+
+```{r}
+subtype = as.character(unique(plot5$subtype.x))
+methods = c("updownSigs", "upSigs", "oncoPredict", "SimpleSigs", "nullsigs")
+
+method_p = data.frame(subtype = character(),
+                      n_cell_line = numeric(),
+                      comparison = character(),
+                      p = numeric(),
+                      p.adj = numeric(),
+                      sig = character(),
+                      fdr.sig = character(),
+                      bonf.alpha= numeric(),
+                      bonf.sig = character())
+
+for(s in 1:length(subtype)){
+  subset = plot5 %>% filter(subtype.x==subtype[s])
+  
+  #1v2
+  method_p = rbind(method_p, data.frame(subtype = subtype[s],
+                  n_cell_line = length(unique(subset$cell_line)),
+                  comparison = paste0(methods[1],".v.",methods[2]),
+                  p = wilcox.test(x=as.matrix(subset[which(subset$Method==methods[1]), "Accuracy"]),
+                                  y=as.matrix(subset[which(subset$Method==methods[2]), "Accuracy"]),
+                                  paired=FALSE, alternative="two.sided")$p.value,
+                  p.adj = NA,sig = NA,fdr.sig = NA,bonf.sig = NA,
+                  bonf.alpha = 0.05/length(unique(subset$cell_line)))
+                  )
+  #1v3
+  method_p = rbind(method_p, data.frame(subtype = subtype[s],
+                  n_cell_line = length(unique(subset$cell_line)),
+                  comparison = paste0(methods[1],".v.",methods[3]),
+                  p = wilcox.test(x=as.matrix(subset[which(subset$Method==methods[1]), "Accuracy"]),
+                                  y=as.matrix(subset[which(subset$Method==methods[3]), "Accuracy"]),
+                                  paired=FALSE, alternative="two.sided")$p.value,
+                  p.adj = NA,sig = NA,fdr.sig = NA,bonf.sig = NA,
+                  bonf.alpha = 0.05/length(unique(subset$cell_line)))
+                  )
+  #1v4
+  method_p = rbind(method_p, data.frame(subtype = subtype[s],
+                  n_cell_line = length(unique(subset$cell_line)),
+                  comparison = paste0(methods[1],".v.",methods[4]),
+                  p = wilcox.test(x=as.matrix(subset[which(subset$Method==methods[1]), "Accuracy"]),
+                                  y=as.matrix(subset[which(subset$Method==methods[4]), "Accuracy"]),
+                                  paired=FALSE, alternative="two.sided")$p.value,
+                  p.adj = NA,sig = NA,fdr.sig = NA,bonf.sig = NA,
+                  bonf.alpha = 0.05/length(unique(subset$cell_line)))
+                  )
+  #1v5
+  method_p = rbind(method_p, data.frame(subtype = subtype[s],
+                  n_cell_line = length(unique(subset$cell_line)),
+                  comparison = paste0(methods[1],".v.",methods[5]),
+                  p = wilcox.test(x=as.matrix(subset[which(subset$Method==methods[1]), "Accuracy"]),
+                                  y=as.matrix(subset[which(subset$Method==methods[5]), "Accuracy"]),
+                                  paired=FALSE, alternative="two.sided")$p.value,
+                  p.adj = NA,sig = NA,fdr.sig = NA,bonf.sig = NA,
+                  bonf.alpha = 0.05/length(unique(subset$cell_line)))
+                  )
+  #2v3
+  method_p = rbind(method_p, data.frame(subtype = subtype[s],
+                  n_cell_line = length(unique(subset$cell_line)),
+                  comparison = paste0(methods[2],".v.",methods[3]),
+                  p = wilcox.test(x=as.matrix(subset[which(subset$Method==methods[2]), "Accuracy"]),
+                                  y=as.matrix(subset[which(subset$Method==methods[3]), "Accuracy"]),
+                                  paired=FALSE, alternative="two.sided")$p.value,
+                  p.adj = NA,sig = NA,fdr.sig = NA,bonf.sig = NA,
+                  bonf.alpha = 0.05/length(unique(subset$cell_line)))
+                  )
+  #2v4
+  method_p = rbind(method_p, data.frame(subtype = subtype[s],
+                  n_cell_line = length(unique(subset$cell_line)),
+                  comparison = paste0(methods[2],".v.",methods[4]),
+                  p = wilcox.test(x=as.matrix(subset[which(subset$Method==methods[2]), "Accuracy"]),
+                                  y=as.matrix(subset[which(subset$Method==methods[4]), "Accuracy"]),
+                                  paired=FALSE, alternative="two.sided")$p.value,
+                  p.adj = NA,sig = NA,fdr.sig = NA,bonf.sig = NA,
+                  bonf.alpha = 0.05/length(unique(subset$cell_line)))
+                  )
+  #2v5
+  method_p = rbind(method_p, data.frame(subtype = subtype[s],
+                  n_cell_line = length(unique(subset$cell_line)),
+                  comparison = paste0(methods[2],".v.",methods[5]),
+                  p = wilcox.test(x=as.matrix(subset[which(subset$Method==methods[2]), "Accuracy"]),
+                                  y=as.matrix(subset[which(subset$Method==methods[5]), "Accuracy"]),
+                                  paired=FALSE, alternative="two.sided")$p.value,
+                  p.adj = NA,sig = NA,fdr.sig = NA,bonf.sig = NA,
+                  bonf.alpha = 0.05/length(unique(subset$cell_line)))
+                  )
+  #3v4
+  method_p = rbind(method_p, data.frame(subtype = subtype[s],
+                  n_cell_line = length(unique(subset$cell_line)),
+                  comparison = paste0(methods[3],".v.",methods[4]),
+                  p = wilcox.test(x=as.matrix(subset[which(subset$Method==methods[3]), "Accuracy"]),
+                                  y=as.matrix(subset[which(subset$Method==methods[4]), "Accuracy"]),
+                                  paired=FALSE, alternative="two.sided")$p.value,
+                  p.adj = NA,sig = NA,fdr.sig = NA,bonf.sig = NA,
+                  bonf.alpha = 0.05/length(unique(subset$cell_line)))
+                  )
+  #3v5
+  method_p = rbind(method_p, data.frame(subtype = subtype[s],
+                  n_cell_line = length(unique(subset$cell_line)),
+                  comparison = paste0(methods[3],".v.",methods[5]),
+                  p = wilcox.test(x=as.matrix(subset[which(subset$Method==methods[3]), "Accuracy"]),
+                                  y=as.matrix(subset[which(subset$Method==methods[5]), "Accuracy"]),
+                                  paired=FALSE, alternative="two.sided")$p.value,
+                  p.adj = NA,sig = NA,fdr.sig = NA,bonf.sig = NA,
+                  bonf.alpha = 0.05/length(unique(subset$cell_line)))
+                  )
+  #4v5
+  method_p = rbind(method_p, data.frame(subtype = subtype[s],
+                  n_cell_line = length(unique(subset$cell_line)),
+                  comparison = paste0(methods[4],".v.",methods[5]),
+                  p = wilcox.test(x=as.matrix(subset[which(subset$Method==methods[4]), "Accuracy"]),
+                                  y=as.matrix(subset[which(subset$Method==methods[5]), "Accuracy"]),
+                                  paired=FALSE, alternative="two.sided")$p.value,
+                  p.adj = NA,sig = NA,fdr.sig = NA,bonf.sig = NA,
+                  bonf.alpha = 0.05/length(unique(subset$cell_line)))
+                  )
+  rm(subset)
+}
+
+method_p = method_p %>%
+  mutate(p.adj = p.adjust(p, method="fdr"),
+         sig = case_when(p <= 0.05 ~ TRUE, TRUE~FALSE),
+         fdr.sig = case_when(p.adj <= 0.05 ~ TRUE, TRUE~FALSE),
+         bonf.sig = case_when(p <= bonf.alpha ~ TRUE, TRUE~FALSE))
+
+method_p = method_p %>%
+  mutate(comparison = factor(comparison, ordered=T,
+                             levels=c("updownSigs.v.nullsigs",
+                                      "updownSigs.v.SimpleSigs",
+                                      "updownSigs.v.oncoPredict",
+                                      "updownSigs.v.upSigs",
+                                      
+                                      "upSigs.v.nullsigs",
+                                      "upSigs.v.SimpleSigs",
+                                      "upSigs.v.oncoPredict",
+                                      
+                                      "oncoPredict.v.nullsigs",
+                                      "oncoPredict.v.SimpleSigs",
+                                      
+                                      "SimpleSigs.v.nullsigs"
+                                      )))
+
+saveRDS(method_p, here("Results", "wilcoxon_method_comparisons.rds"))
+```
+ 
+### plot p-values
+```{r}
+method_p = readRDS(here("Results", "wilcoxon_method_comparisons.rds"))
+
+(ggplot(method_p, aes(x=p, y=subtype, col=comparison)) +
+  geom_text(aes(x=bonf.alpha, y=subtype), label="|", color="black",
+            inherit.aes=F, alpha=0.5) +
+  geom_label(data=method_p, aes(y = subtype, x = 0.00000008, #add n
+                                label = n_cell_line), inherit.aes=F, 
+             label.padding = unit(0.15, "lines"), label.size = 0.4, size = 4) +
+  geom_point(alpha=0.7, size=2.5) +
+  scale_color_manual(values=c("#9b2226", "#e85d04", "#faa307", "#fcca46", 
+                              "#4f772d", "#0a9396", "#023e8a", 
+                              "#5a189a", "#f26a8d", 
+                              "black")) +
+  scale_x_continuous(trans="log10", limits=c(0.00000008, 1)) +
+  labs(title = "P-values",
+       subtitle = "with Bonferroni-corrected alpha=0.05",
+       x="log10(p-value)", y="Disease Site",
+       col="Comparison") +
+  theme(legend.position="none",
+        axis.text=element_text(size=14),
+        axis.text.x = element_text(angle=30, hjust=1, vjust=1))) +
+
+  (ggplot(method_p, aes(x=p.adj,  y=subtype, col=comparison)) +
+  geom_label(data=method_p, aes(y = subtype, x = 0.00001, #add n
+                                label = n_cell_line), inherit.aes=F, 
+             label.padding = unit(0.15, "lines"), label.size = 0.4, size = 4) +
+  geom_vline(xintercept = 0.05, color="black") +
+  geom_point(alpha=0.7, size=2.5) +
+  scale_color_manual(values=c("#9b2226", "#e85d04", "#faa307", "#fcca46", 
+                              "#4f772d", "#0a9396", "#023e8a", 
+                              "#5a189a", "#f26a8d", 
+                              "black")) +
+  scale_x_continuous(trans="log10") +
+  labs(title = "FDR-Adjusted P-values",
+       subtitle = "with alpha = 0.05",
+       x="log10(Adjusted p-value)", y="Disease Site",
+       col="Comparison")+
+  theme(axis.text=element_text(size=14),
+        axis.text.x = element_text(angle=30, hjust=1, vjust=1)))
+ggsave(here("Plots", "Method Comparison", "wilcoxon_p.png"),
+       width=9, height=7)
+```
+
+
+# Correlations
+
+correlation by cell line
+```{r}
+plot_cor = function(data, method1, method2, withlegend){
+  #sort the data
+  data1 = data %>% 
+    filter(Method==method1) %>%
+    mutate(method1_acc = Accuracy)
+  data2 = data %>% 
+    filter(Method==method2) %>%
+    mutate(method2_acc = Accuracy)
+
+  data3 = inner_join(data1 %>% select(cell_line, subtype.x, method1_acc),
+                    data2 %>% select(cell_line, subtype.x, method2_acc),
+                    by=c("cell_line", "subtype.x"))
+  #calculate spearman correlation
+  cl1 = unique(data1$cell_line)
+  cl2 = unique(data2$cell_line)
+  
+  data1 = data1 %>% filter(cell_line %in% cl2)
+  data2 = data2 %>% filter(cell_line %in% cl1)
+  data2 = data2[match(data1$cell_line,data2$cell_line),]
+  
+  rho = cor(data1$Accuracy, data2$Accuracy, method="spearman")
+  
+  #determine the color the axis label will be based on the method
+  #matching it with the boxplot/violins i had without cancer type stratification
+  if(method1=="SimpleSigs"){
+    x.col = "#e07a5f"
+  } else if (method1 == "oncoPredict") {
+    x.col = "#6d597a"
+  } else if (method1 == "upSigs") {
+    x.col = "#6a040f"
+  } else if (method1 == "updownSigs") {
+    x.col = "#c9184a"
+  }
+  if(method2=="SimpleSigs"){
+    y.col = "#e07a5f"
+  } else if (method2 == "oncoPredict") {
+    y.col = "#6d597a"
+  } else if (method2 == "upSigs") {
+    y.col = "#6a040f"
+  } else if (method2 == "updownSigs") {
+    y.col = "#c9184a"
+  }
+
+  #plot with the legend, save individually
+  # plot_indiv = ggplot(data3, aes(x=method1_acc, y=method2_acc, col=subtype.x)) +
+  #   geom_point(size=2, alpha=0.8) +
+  #   scale_color_manual(values=c("#FF0000", "#A40000", "#D83601", "#D85701", "#D88D01", 
+  #                               "#FFAB04", "#FFCD04", "#FFE204", "#E0E400", "#BAE400", 
+  #                               "#A0E400", "#5BE400", "#0BFF48", "#23C200", "#01A851", 
+  #                               "#03A46C", "#03CFA3", "#03CFB8", "#03BECF", "#02BEF2", 
+  #                               "#028BC5", "#0264C5", "#0414CA", "#5234E8", "#7C34E8", 
+  #                               "#A334E8", "#CA34E8", "#F03FE5", "#8C0C7F", "#8C0C41")) +
+  #   labs(title = "Accuracy Score Correlation",
+  #        subtitle=paste0("Spearman's rho = ", round(rho, 3)),
+  #        x=method1,
+  #        y=method2,
+  #        col="Disease Site") +
+  #   theme(axis.text=element_text(size=12))
+  # 
+  # ggsave(here("Plots", "Method Comparison",
+  #             paste0(method1,".v.", method2, "_cor.png")),
+  #        plot=plot_indiv,
+  #        width=5, height=4)
+
+  #plot without legend, to put together in a multipanel figure
+  plot = ggplot(data3, aes(x=method1_acc, y=method2_acc)) +
+    geom_point(size=1, alpha=0.5) +
+    # scale_color_manual(values=c("#FF0000", "#A40000", "#D83601", "#D85701", "#D88D01", 
+    #                             "#FFAB04", "#FFCD04", "#FFE204", "#E0E400", "#BAE400", 
+    #                             "#A0E400", "#5BE400", "#0BFF48", "#23C200", "#01A851", 
+    #                             "#03A46C", "#03CFA3", "#03CFB8", "#03BECF", "#02BEF2", 
+    #                             "#028BC5", "#0264C5", "#0414CA", "#5234E8", "#7C34E8", 
+    #                             "#A334E8", "#CA34E8", "#F03FE5", "#8C0C7F", "#8C0C41")) +
+    labs(title = paste0("rho = ", round(rho, 3)),
+         x=method1,
+         y=method2) +
+    scale_x_continuous(breaks=c(0, 0.5, 1)) +
+    scale_y_continuous(breaks=c(0, 0.5, 1)) +
+    theme(axis.text=element_text(size=12),
+          legend.position="none",
+          axis.title.x=element_text(color=x.col),
+          axis.title.y=element_text(color=y.col))
+  
+  return(plot)
+}
+```
+
+not going to include the null sigs for this analysis
+```{r}
+p1 = plot_cor(data=plot5,
+         method1="upSigs", method2="SimpleSigs")
+p2 = plot_cor(data=plot5,
+         method1="upSigs", method2="oncoPredict")
+p3 = plot_cor(data=plot5,
+         method1="upSigs", method2="updownSigs")
+
+p4 = plot_cor(data=plot5,
+         method1="updownSigs", method2="SimpleSigs")
+p5 = plot_cor(data=plot5,
+         method1="updownSigs", method2="oncoPredict")
+
+p6 = plot_cor(data=plot5,
+         method1="oncoPredict", method2="SimpleSigs")
+
+p1+p2+p3+p4+p5+p6 + plot_annotation(title="Accuracy Score Correlation")
+ggsave(here("Plots", "Method Comparison", "spearman_method_comparison.png"),
+       width=5, height=4)
 ```
 

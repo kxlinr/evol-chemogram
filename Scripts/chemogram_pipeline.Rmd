@@ -17,7 +17,7 @@ This pipeline should be run after `setup.Rmd` and can be used in place of the re
 The signatures used here were extracted using the [CisSig](https://github.com/jessicascarborough/cissig) pipeline published by [Scarborough et al](https://www.nature.com/articles/s41698-023-00375-y.pdf). The parameters used for each signature were the same as CisSig, with the exception of the irinotecan, topotecan, and vorinostat signatures, which used a differential expression cutoff of 0.15 instead of 0.2.
 
 
-The only manual parts should be listing the full drug names at the end of the `signatures` chunk below.
+The only manual parts should be listing the full drug names at the end of the `signatures` chunk below, as well as specifying if the code should be run using upregulated signatures only or upregulated *and* downregulated signatures together.
 
 # Load Packages
 
@@ -53,16 +53,36 @@ drug_id_key = readRDS(here("Data", "drug_id_key.rds"))
 norm_dose_resp = readRDS(here("Data", "prepped_drug_resp.rds"))
 ```
 
+
 ```{r load_signatures}
 sig_files = list.files(here("Data", "Signatures"))
 sigs = lapply(sig_files, function(x) readRDS(here("Data", "Signatures", x)))
 names(sigs) = gsub("\\_.*", "", sig_files) #cut off everything after the first underscore
 
+#set up sigs that are DOWN when sensitivity is up
+sigs_down = sigs[c(1,3,5,7,9,11,13,15,17,19)]
+extract_sig <- function(conn_seeds_list){
+  count_vec <- unlist(conn_seeds_list)
+  conn_table <- data.frame(table(count_vec))
+  conn_over2 <- conn_table[conn_table$Freq>2, ]
+  conn_over2 <- as.character(conn_over2$count_vec)
+  return(conn_over2)
+}
+for(i in 1:10){
+  sigs_down[[i]] = extract_sig(sigs_down[[i]])
+}
+
+#set up sigs that are UP when sensitivity is up
+sigs=sigs[c(2,4,6,8,10,12,14,16,18,20)]
 ## we also need the full drug names to match with the correct drug response data. those need to be manually entered in the *same order* as the list shows
 #make sure theyre spelled right! can check the `drug_id_key` table for spelling
 names(sigs) #print this to make sure the order is correct
 sig_drugs = c("Cisplatin", "Cytarabine", "5-Fluorouracil", "Gemcitabine", "Irinotecan",
               "Luminespib", "Paclitaxel", "Topotecan", "Vinblastine", "Vorinostat")
+
+updown="up" #"up" or "updown"
+
+unique(names(sigs_down)==names(sigs)) #should be TRUE only
 
 rm(sig_files)
 ```
@@ -71,14 +91,15 @@ Run the following to use 3 sigs only (what was used in the first part of the pap
 
 ```{r 3_signatures}
 sigs = sigs[c(1,3,4)]
+sigs_down = sigs_down[c(1,3,4)]
 sig_drugs=sig_drugs[c(1,3,4)]
 ```
 
 To test the smaller, length-optimized sigs
 
 ```{r}
-sigs[["cis"]] = c("LRRC8C", "LY6K", "MMP10","SLFN11", "STOML2","USP31","WDR3", "ZNF750")
-sigs[["gem"]] = c("CRLF3", "MLKL", "POLR3G", "PROCR", "RELB", "SLFN11")
+# sigs[["cis"]] = c("LRRC8C", "LY6K", "MMP10","SLFN11", "STOML2","USP31","WDR3", "ZNF750")
+# sigs[["gem"]] = c("CRLF3", "MLKL", "POLR3G", "PROCR", "RELB", "SLFN11")
 ```
 
 
@@ -315,21 +336,47 @@ To streamline the process, we'll create a function to calculate the signature sc
 
 ```{r FX_sig_score}
 #F(X) to subset genes within each drug sensitivity signature, then derive the sensitivity score per cell line
-sig_score = function(sig_genes, exprs, drug_abbrev){
-  
-  exprs_norm2 = exprs %>%
-    dplyr::select(COSMIC_ID, all_of(sig_genes))
-  
-  #Find signature score for each cell line
-  sig_exprs = exprs_norm2[,-1] %>% 
-    mutate(score = apply(.,1,median), cosmic_id = exprs$COSMIC_ID)
-  
-  #clean up result
-  score = sig_exprs %>% dplyr::select(cosmic_id, score)
-  rownames(score) = sig_exprs$cosmic_id
-  colnames(score) = c("cell_line", "score")
-  
-  score$drug_abbrev = drug_abbrev
+sig_score = function(sig_genes, exprs, drug_abbrev, 
+                     updown=c("up", "updown"), sig_genes_down=NA){
+  if(updown=="up"){
+     exprs_norm2 = exprs %>%
+     dplyr::select(COSMIC_ID, all_of(sig_genes))
+    
+    #Find signature score for each cell line
+    sig_exprs = exprs_norm2[,-1] %>% #-1 bc of the cell line column
+      mutate(score = apply(.,1,median), cosmic_id = exprs$COSMIC_ID)
+    
+    #clean up result
+    score = sig_exprs %>% dplyr::select(cosmic_id, score)
+    rownames(score) = sig_exprs$cosmic_id
+    colnames(score) = c("cell_line", "score")
+    
+    score$drug_abbrev = drug_abbrev
+  } else if (updown=="updown"){
+    exprs_norm_up = exprs %>%
+     dplyr::select(COSMIC_ID, all_of(sig_genes))
+    exprs_norm_dn = exprs %>%
+     dplyr::select(COSMIC_ID, all_of(sig_genes_down))
+    
+    #Find signature score for each cell line
+    sig_exprs_up = exprs_norm_up[,-1] %>% #-1 bc of the cell line column
+      mutate(score_up = apply(.,1,median), cosmic_id = exprs$COSMIC_ID)
+    sig_exprs_dn = exprs_norm_dn[,-1] %>% 
+      mutate(score_dn = apply(.,1,median), cosmic_id = exprs$COSMIC_ID)
+    
+    #clean up result
+    score_up = sig_exprs_up %>% dplyr::select(cosmic_id, score_up)
+    score_dn = sig_exprs_dn %>% dplyr::select(cosmic_id, score_dn)
+    score = full_join(score_up, score_dn, by="cosmic_id")
+    score = score %>% mutate(score = score_up - (score_dn))
+    score = score[,c("cosmic_id", "score")]
+    colnames(score) = c("cell_line", "score")
+    rownames(score) = score$cell_line
+    
+  } else {
+    print("Updown variable does not exist or is undefined. Check the end of the `load_signatures` chunk.")
+  }
+ 
 
   return(score)
 }
@@ -344,7 +391,9 @@ scores = list()
 for(i in 1:length(sigs)){
   scores[[i]] = sig_score(sig_genes=sigs[[i]],
                           exprs=exprs_norm,
-                          drug_abbrev=names(sigs)[i])
+                          drug_abbrev=names(sigs)[i],
+                          updown=updown,
+                          sig_genes_down = sigs_down[[i]])
   names(scores)[i] = names(sigs)[i]
 }
 ```
@@ -363,6 +412,10 @@ for(i in 1:length(scores)){
 
 ```{r scores_to_df}
 scores_df = do.call(rbind, scores)
+scores_df$drug_abbrev = rownames(scores_df)
+scores_df = scores_df %>%
+  separate(drug_abbrev, c("drug_abbrev", "n")) %>%
+  select(-n)
 
 scores_df_wide = pivot_wider(scores_df,
                              id_cols = c(cell_line, subtype),
@@ -379,11 +432,11 @@ scores = scores %>% select(-`NA`)
 ```{r save_scores}
 #Save
 saveRDS(scores, here("Results",
-                     paste0(length(sigs), "sig_scores.rds")))
+                     paste0(length(sigs), "sig_", updown, "_scores.rds")))
 
 #Reload
 scores=readRDS(here("Results",
-                     paste0(length(sigs), "sig_scores.rds")))
+                     paste0(length(sigs), "sig_", updown, "_scores.rds")))
 
 scores = na.omit(scores)
 
@@ -597,9 +650,9 @@ for(i in 1:length(all_cl)){
 
 
 ```{r score_acc}
-saveRDS(scored_ranks, here("Results", paste0(length(sigs),"sig_accuracy_scores.rds")))
+saveRDS(scored_ranks, here("Results", paste0(length(sigs),"sig_", updown, "_accuracy_scores.rds")))
 
-scored_ranks = readRDS(here("Results", paste0(length(sigs),"sig_accuracy_scores.rds")))
+scored_ranks = readRDS(here("Results", paste0(length(sigs),"sig_", updown, "_accuracy_scores.rds")))
 ```
 
 
@@ -666,8 +719,10 @@ subtype_scores$subtype <- factor(subtype_scores$subtype,
 subtype_scores = subtype_scores[order(subtype_scores$subtype),]
 
 #save
-# saveRDS(scored_ranks_full, here("Results", paste0(length(sigs),"sig_accuracy_scores_cleaned.rds")))
-scored_ranks_full = readRDS(here("Results", paste0(length(sig_drugs),"sig_accuracy_scores_cleaned.rds")))
+saveRDS(scored_ranks_full, here("Results", paste0(length(sigs),"sig_", updown,
+                                                  "_accuracy_scores_cleaned.rds")))
+scored_ranks_full = readRDS(here("Results", paste0(length(sig_drugs),
+                                                   "sig_", updown, "_accuracy_scores_cleaned.rds")))
 ```
 
 
@@ -704,7 +759,7 @@ p1
 
 ggsave(plot=p1, 
        filename=here("Plots",
-                     paste0(length(sigs), "sig_accuracy_boxplots.png")), 
+                     paste0(length(sigs), "sig_", updown, "_accuracy_boxplots.png")), 
        width = 15, height = 9) #save plot
 ```
 
@@ -752,7 +807,7 @@ p2
 
 ggsave(plot=p2, 
        filename=here("Plots", "Epithelial Cancers",
-                     paste0(length(sigs), "sig_accuracy_boxplots_epi.png")), 
+                     paste0(length(sigs), "sig_", updown, "_accuracy_boxplots_epi.png")), 
        width = 15, height = 9) #save plot
 
 ```
