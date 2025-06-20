@@ -574,7 +574,7 @@ ggsave(here("Plots","Method Comparison", "ss_vs_chemogram.png"),
 
 ## Run Method
 
-Most of this code is pulled directly from the calcPhenotype.Rmd vignette provided by the authors on GitHub. The training data are downloaded directly from the GitHub repository.
+Most of this code is pulled directly from the `calcPhenotype.Rmd` vignette provided by the authors on GitHub. The training data are downloaded directly from the GitHub repository.
 
 ```{r}
 #Read GDSC2 response data. rownames() are samples, colnames() are drugs. 
@@ -889,22 +889,24 @@ saveRDS(plot5, here("Results", "all_method_comparisons.rds"))
 
 
 ```{r}
-# cg = na.omit(plot3)%>% filter(Method=="Chemogram") %>%select(Accuracy)
-# op = na.omit(plot3)%>% filter(Method=="oncoPredict") %>%select(Accuracy)
-# ss = na.omit(plot3)%>% filter(Method=="simpleSigs") %>%select(Accuracy)
-# 
-# wilcox.test(x=as.vector(cg)$Accuracy,
-#             y=as.vector(op)$Accuracy,
-#                     paired=FALSE, alternative="two.sided")
+plot5 = readRDS(here("Results", "all_method_comparisons.rds"))
+
+method_comp_means = plot5 %>%
+  group_by(Method) %>%
+  summarise_at(vars(Accuracy), list(mean = mean)) %>%
+  mutate(mean = round(mean, 2))
+
 ggplot(na.omit(plot5), aes(x=Method, y=Accuracy, fill=Method, col=Method)) +
   geom_violin(width=0.5, alpha=0.6) +
   geom_boxplot(width=0.2, alpha = 0.6, position=pd) +
   scale_fill_manual(values=c("#a8dadc","#ffb4a2",  "#c8b6ff", "#9b2226", "#edafb8")) +
   scale_color_manual(values=c("#03045e","#e07a5f", "#6d597a","#6a040f", "#c9184a")) +
-  # scale_fill_manual(values=c("#edafb8","#9b2226",  "#c8b6ff", "#ffb4a2", "#a8dadc")) +
-  # scale_color_manual(values=c("#c9184a","#6a040f", "#6d597a","#e07a5f", "#03045e")) +
   
-  scale_y_continuous(limits = c(0, 1), breaks = c(0, 0.25, 0.5, 0.75, 1)) +
+  geom_label(data=na.omit(method_comp_means), aes(x = Method, y = -0.05, label = mean),
+             inherit.aes=F, alpha=0.5,
+             label.padding = unit(0.15, "lines"), label.size = 0.4, size = 5) +
+  
+  scale_y_continuous(limits = c(-0.05, 1), breaks = c(0, 0.25, 0.5, 0.75, 1)) +
   
   labs(title=paste0("Predictive Accuracy Various Methods"),
        subtitle = paste0(nrow(scored_ranks_full)," Cell Lines against 10 drugs"),
